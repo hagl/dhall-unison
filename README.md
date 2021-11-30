@@ -66,3 +66,4 @@ This project is based on and uses code from the projects
 [dhall-haskell-license]: https://github.com/dhall-lang/dhall-haskell/blob/main/LICENSE
 [dhall-tests]: https://github.com/dhall-lang/dhall-lang/tree/master/tests
 [stew-parser]: [https://share.unison-lang.org/latest/namespaces/stew/parser]
+[hagl]: [https://twitter.com/hagl]
