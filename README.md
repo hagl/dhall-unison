@@ -41,9 +41,10 @@ At the time of this writing this will give the following results
 
 ### Limitations 
 
-* date & time types are still unsuported
-* importing of external files is not yet supported
-
+The following features are not yet supported
+* date & time types 
+* importing of external files 
+* type-checking
 
 ## Copyright and license
 
@@ -58,7 +59,6 @@ This project is based on and uses code from the projects
   
 [license]: https://github.com/hagl/dhall-unison/blob/main/LICENSE
 [unison]: https://www.unisonweb.org/
-[dhall-21-0-0]: https://github.com/dhall-lang/dhall-lang/pull/1194
 [dhall-lang]: https://dhall-lang.org/
 [dhall-lang-project]: https://github.com/dhall-lang/dhall-lang
 [dhall-lang-license]: https://github.com/dhall-lang/dhall-lang/blob/main/LICENSE
