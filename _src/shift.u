@@ -1,0 +1,69 @@
+use .dhall.trunk.syntax 
+use .dhall.trunk.syntax.Constant
+
+use base.Natural <=
+use Optional 
+
+-- | Unison implementation of the shift function
+shift.shift : Int -> Text -> Natural -> Expression -> Expression
+shift.shift d x m = 
+  shift' : Expression -> Expression
+  shift' ex = shift d x m ex
+  addShift: Natural -> Int -> Natural
+  addShift n i = if i Int.< +0 then n - (Natural.fromNat (Int.truncate0 (Int.negate i))) else n + (Natural.fromNat (Int.truncate0 i))
+  cases
+    Variable x' n | x == x' && (m <= n) -> Variable x' (addShift n d)
+    Variable x' n | x == x' -> Variable x' n
+    Variable y n -> Variable y n
+    Lambda x' A0 b0 | x == x' -> Lambda x' (shift' A0) (shift d x (m + one) b0)
+    Lambda y A0 b0 -> Lambda y (shift' A0) (shift' b0)
+    Forall x' A0 b0 | x == x' -> Forall x' (shift' A0) (shift d x (m + one) b0)
+    Forall y A0 b0 -> Forall y (shift' A0) (shift' b0)
+    Let x' t a0 b0 | x == x' -> Let x' (Optional.map shift' t) (shift' a0) (shift d x (m + one) b0)
+    Let y t a0 b0 -> Let y (Optional.map shift' t) (shift' a0) (shift' b0)
+    If t0 l0 r0 -> If (shift' t0) (shift' l0) (shift' r0) 
+    Merge t0 u0 t -> Merge (shift' t0) (shift' u0) (Optional.map shift' t)
+    ToMap t0 t -> ToMap (shift' t0) (Optional.map shift' t)
+    EmptyList T0 -> EmptyList (shift' T0)
+    NonEmptyList ts0 -> NonEmptyList (Nonempty.map shift' ts0)
+    Annotation t0 T0 -> Annotation (shift' t0) (shift' T0)
+    Expression.Operator l0 op r0 -> Expression.Operator (shift' l0) op (shift' r0)
+    Application f0 a0 -> Application (shift' f0) (shift' a0)
+    Field t0 y -> Field (shift' t0) y
+    ProjectByLabels t0 xs -> ProjectByLabels (shift' t0) xs
+    ProjectByType t0 T0 -> ProjectByType (shift' t0) (shift' T0)
+    Completion T0 r0 -> Completion (shift' T0) (shift' r0)
+    Assert T0 -> Assert (shift' T0)
+    With e0 ks v0 -> With (shift' e0) ks (shift' v0)
+    DoubleLiteral n -> DoubleLiteral n
+    NaturalLiteral n -> NaturalLiteral n
+    IntegerLiteral n -> IntegerLiteral n
+    --DateLiteral d -> DateLiteral d
+    --TimeLiteral d -> TimeLiteral d
+    --TimeZoneLiteral z -> TimeZoneLiteral z
+    Expression.TextLiteral (Chunks xys0 z) -> Expression.TextLiteral (Chunks (List.map (cases (s, t0) -> (s, shift' t0)) xys0) z)
+    RecordType ks0 -> RecordType (List.map (cases (k, t_T0) -> (k, shift' t_T0)) ks0)
+    RecordLiteral ks0 -> RecordLiteral (List.map (cases (k, t_T0) -> (k, shift' t_T0)) ks0)
+    UnionType ks0 -> UnionType (List.map (cases (k, t) -> (k, Optional.map shift' t)) ks0)
+    Expression.Some a0 -> Expression.Some (shift' a0)
+    Expression.Builtin b ->  Expression.Builtin b
+    Expression.Constant c -> Expression.Constant c
+
+use test
+
+test> shift.shift.tests.ex1 = check ((shift +1 "x" zero (Variable "x" zero)) === Variable "x" one)
+test> shift.shift.tests.ex2 = check ((shift +1 "x" one (Variable "x" zero)) === Variable "x" zero)
+test> shift.shift.tests.ex3 = check ((shift +1 "x" zero (Variable "y" zero)) === Variable "y" zero)
+test> shift.shift.tests.ex4 = check ((shift -1 "x" zero (Variable "x" one)) === Variable "x" zero)
+
+test> shift.shift.tests.ex5 = check ((shift +1 "x" zero (Lambda "x" (Expression.Constant Type) (Variable "x" zero))) === (Lambda "x" (Expression.Constant Type) (Variable "x" zero)))
+test> shift.shift.tests.ex6 = check ((shift +1 "x" zero (Forall "x" (Expression.Constant Type) (Variable "x" zero))) === (Forall "x" (Expression.Constant Type) (Variable "x" zero)))
+test> shift.shift.tests.ex7 = check ((shift +1 "x" zero (Let "x" None (NaturalLiteral one) (Variable "x" zero))) === (Let "x" None (NaturalLiteral one) (Variable "x" zero)))
+test> shift.shift.tests.ex8 = check ((shift +1 "x" zero (Let "x" (Some (Expression.Builtin Natural)) (NaturalLiteral one) (Variable "x" zero))) === (Let "x" (Some (Expression.Builtin Natural)) (NaturalLiteral one) (Variable "x" zero)))
+
+test> shift.shift.tests.ex9 = check ((shift +1 "x" zero (Lambda "y" (Expression.Constant Type) (Variable "x" zero))) === (Lambda "y" (Expression.Constant Type) (Variable "x" one)))
+test> shift.shift.tests.ex10 = check ((shift +1 "x" zero (Forall "y" (Expression.Constant Type) (Variable "x" zero))) === (Forall "y" (Expression.Constant Type) (Variable "x" one)))
+test> shift.shift.tests.ex11 = check ((shift +1 "x" zero (Let "y" None (NaturalLiteral one) (Variable "x" zero))) === (Let "y" None (NaturalLiteral one) (Variable "x" one)))
+test> shift.shift.tests.ex12 = check ((shift +1 "x" zero (Let "y" (Some (Expression.Builtin Natural)) (NaturalLiteral one) (Variable "x" zero))) === (Let "y" (Some (Expression.Builtin Natural)) (NaturalLiteral one) (Variable "x" one)))
+
+test> shift.shift.tests.ex13 = check ((shift +1 "x" zero (NonEmptyList (Nonempty (Variable "x" zero) []))) === (NonEmptyList (Nonempty (Variable "x" one) [])))

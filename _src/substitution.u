@@ -1,0 +1,76 @@
+use .syntax
+use .shift
+
+substitution.substitute: Expression -> Text -> Natural -> Expression -> Expression
+substitution.substitute e x' n e0 =
+  subst : Expression -> Expression
+  subst ex = substitute ex x' n e0
+  match e with
+    Variable x n' | (x == x') && (n==n') -> e0
+    Variable y m -> Variable y m
+    Lambda x A0 b0 | x == x' -> Lambda x (subst A0) (substitute b0 x' (n + one) (shift +1 x zero e0))
+    Lambda y A0 b0 -> Lambda y (subst A0) (substitute b0 x' n (shift +1 y zero e0))
+    Forall x A0 B0 | x == x' -> Forall x (subst A0) (substitute B0 x' (n + one) (shift +1 x zero e0))
+    Forall y A0 B0 -> Forall y (subst A0) (substitute B0 x' n (shift +1 x' zero e0))
+    Let x t a0 b0 | x == x' -> Let x (Optional.map subst t) (subst a0) (substitute b0 x (n + one) (shift +1 x zero e0))
+    Let y t a0 b0 -> Let y (Optional.map subst t) (subst a0) (substitute b0 x' n (shift +1 y zero e0))
+    If t0 l0 r0 -> If (subst t0) (subst l0) (subst r0)
+    Merge t0 u0 t -> Merge (subst t0) (subst u0) (Optional.map subst t)
+    ToMap t0 t -> ToMap (subst t0)(Optional.map subst t)
+    EmptyList T0 -> EmptyList (subst T0)
+    NonEmptyList ts0 -> NonEmptyList (Nonempty.map subst ts0)
+    Annotation t0 T0 -> Annotation (subst t0) (subst T0)
+    Expression.Operator l0 op r0 -> Expression.Operator (subst l0) op (subst r0)
+    Application f0 a0 -> Application (subst f0) (subst a0)
+    Field t0 y -> Field (subst t0) y
+    ProjectByLabels t0 xs -> ProjectByLabels (subst t0) xs
+    ProjectByType t0 T0 -> ProjectByType (subst t0) (subst T0)
+    Completion T0 r0 -> Completion (subst T0) (subst r0)
+    Assert T0 -> Assert (subst T0)
+    With e0 ks v0 -> With (subst e0) ks (subst v0)
+    DoubleLiteral d -> DoubleLiteral d
+    NaturalLiteral n -> NaturalLiteral n
+    IntegerLiteral n -> IntegerLiteral n
+    Expression.TextLiteral (Chunks xys0 z) -> Expression.TextLiteral (Chunks (List.map (cases (s, t0) -> (s, subst t0)) xys0) z)
+    RecordType ks0 -> RecordType (List.map (cases (k, t_T0) -> (k, subst t_T0)) ks0)
+    RecordLiteral ks0 -> RecordLiteral (List.map (cases (k, t_T0) -> (k, subst t_T0)) ks0)
+    UnionType ks0 -> UnionType (List.map (cases (k, t) -> (k, Optional.map subst t)) ks0)
+    Expression.Some a0 -> Expression.Some (subst a0)
+    Expression.Builtin b -> Expression.Builtin b
+    Expression.Constant c -> Expression.Constant c
+
+
+
+use test
+
+test> substitution.substitute.tests.ex1 = check(substitute (Variable "x" zero) "x" zero (Expression.Builtin Builtin.Bool)
+  ===
+   (Expression.Builtin Builtin.Bool))
+
+test> substitution.substitute.tests.ex2 = check(substitute (Variable "y" zero) "x" zero (Expression.Builtin Builtin.Bool)
+  ===
+  (Variable "y" zero))
+
+test> substitution.substitute.tests.ex3 = check(substitute (Variable "x" zero) "x" one (Expression.Builtin Builtin.Bool)
+  ===
+  (Variable "x" zero))
+
+test> substitution.substitute.tests.ex4 = check(substitute (Application (Expression.Builtin Builtin.List) (Variable "x" zero)) "x" zero (Expression.Builtin Builtin.Bool)
+  ===
+  (Application (Expression.Builtin Builtin.List)(Expression.Builtin Builtin.Bool)))
+
+test> substitution.substitute.tests.ex5 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" zero)) "x" zero (Expression.Builtin Builtin.True)
+  ===
+  (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" zero)))
+
+test> substitution.substitute.tests.ex6 = check(substitute (Lambda "y" (Expression.Builtin Builtin.Text) (Variable "x" zero)) "x" zero (Expression.Builtin Builtin.True)
+  ===
+  (Lambda "y" (Expression.Builtin Builtin.Text) (Expression.Builtin Builtin.True)))
+
+test> substitution.substitute.tests.ex7 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" one)) "x" zero (Expression.Builtin Builtin.True)
+  ===
+  (Lambda "x" (Expression.Builtin Builtin.Text) (Expression.Builtin Builtin.True)))
+
+test> substitution.substitute.tests.ex8 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" (Natural.fromNat 2))) "x" one (Expression.Builtin Builtin.True)
+  ===
+  (Lambda "x" (Expression.Builtin Builtin.Text) (Expression.Builtin Builtin.True)))

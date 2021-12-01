@@ -1,0 +1,304 @@
+unique type syntax.Expression = 
+   -- | > x@n
+  Variable Text Natural
+  | -- | > λ(x : A) → b
+  Lambda Text syntax.Expression syntax.Expression
+  | -- | > ∀(x : A) → B
+  Forall Text syntax.Expression syntax.Expression
+  | -- | > let x : A = a in b
+    --   > let x     = a in b
+  Let Text (Optional syntax.Expression) syntax.Expression syntax.Expression
+  | -- | > if t then l else r
+  If syntax.Expression syntax.Expression syntax.Expression
+  | -- | > merge t u : T
+    -- ^ > merge t u
+  Merge syntax.Expression syntax.Expression (Optional syntax.Expression)
+  | -- | > toMap t : T
+    -- ^ > toMap t
+  ToMap syntax.Expression (Optional syntax.Expression)
+  | -- | > [] : T
+  EmptyList syntax.Expression
+  | -- | > [ t, ts… ]
+  NonEmptyList (Nonempty syntax.Expression)
+  | -- | > t : T
+  Annotation syntax.Expression syntax.Expression
+  | -- | > l □ r
+    Operator syntax.Expression syntax.Operator syntax.Expression
+  | -- | > f a
+    Application syntax.Expression syntax.Expression
+  | -- | > t.x
+    Field syntax.Expression Text
+  | -- | > t.{ xs… }
+    ProjectByLabels syntax.Expression [Text]
+  | -- | > t.(s)
+    ProjectByType syntax.Expression syntax.Expression
+  | -- | > T::r
+    Completion syntax.Expression syntax.Expression
+  | -- | > assert : T
+    Assert syntax.Expression
+  | -- | > e with k.ks… = v
+    With syntax.Expression (Nonempty Text) syntax.Expression
+  | -- | > n.n
+    DoubleLiteral Float -- TODO
+  | -- | > n
+    NaturalLiteral Natural
+  | -- | > ±n
+    IntegerLiteral Integer
+  | -- | > "s"
+    --   > "s${t}ss…"
+    TextLiteral syntax.TextLiteral
+  -- | DateLiteral Time.Day
+  -- | -- | Precision
+    -- TimeLiteral
+      -- Time.TimeOfDay
+      -- Int
+  -- | TimeZoneLiteral Time.TimeZone
+  | -- | > {}
+    --   > { k : T, ks… }
+    RecordType [(Text, syntax.Expression)]
+  | -- | > {=}
+    --   > { k = t, ks… }
+    RecordLiteral [(Text, syntax.Expression)]
+  | -- | > <>
+    --   > < k : T | ks… >
+    --   > < k | ks… >
+    UnionType [(Text, Optional syntax.Expression)]
+  -- | Import ImportType ImportMode (Optional (Digest SHA256))
+  | -- | > Some s
+    Some syntax.Expression
+  | Builtin syntax.Builtin
+  | Constant syntax.Constant  
+
+
+unique type syntax.TextLiteral = Chunks [(Text, syntax.Expression)] Text
+
+-- | Associative binary operators
+unique type syntax.Operator =
+   -- | > ||
+    Or
+  | -- | > +
+    Plus
+  | -- | > ++
+    TextAppend
+  | -- | > #
+    ListAppend
+  | -- | > &&
+    And
+  | -- | > ∧
+    CombineRecordTerms
+  | -- | > ⫽
+    Prefer
+  | -- | > ⩓
+    CombineRecordTypes
+  | -- | > *
+    Times
+  | -- | > ==
+    Equal
+  | -- | > !=
+    NotEqual
+  | -- | > ===
+    Equivalent
+  | -- | > ?
+    Alternative
+
+unique type syntax.Builtin
+  = NaturalBuild
+  | NaturalFold
+  | NaturalIsZero
+  | NaturalEven
+  | NaturalOdd
+  | NaturalToInteger
+  | NaturalShow
+  | NaturalSubtract
+  | IntegerToDouble
+  | IntegerShow
+  | IntegerNegate
+  | IntegerClamp
+  | DoubleShow
+  | ListBuild
+  | ListFold
+  | ListLength
+  | ListHead
+  | ListLast
+  | ListIndexed
+  | ListReverse
+  | TextShow
+  | TextReplace
+  | Bool
+  | Optional
+  | Natural
+  | Integer
+  | Double
+  | Text
+  | List
+  | True
+  | False
+  | _None
+  | Date
+  | Time
+  | TimeZone    
+unique type syntax.Constant 
+  = Type
+  | Kind
+  | Sort
+
+(syntax.TextLiteral.<>) : TextLiteral -> TextLiteral -> TextLiteral
+tl1 syntax.TextLiteral.<> tl2 = match tl1 with
+  Chunks xys0 z0 -> match tl2 with
+    Chunks xys1 z1 -> match unsnoc xys1 with
+      None -> Chunks xys0 (z0 Text.++ z1)
+      Optional.Some (t, (x1, y1)) -> Chunks (xys0 List.++ ((z0 Text.++ x1, y1) List.+: t)) z1
+
+syntax.addTextToTextLiteral : Text -> TextLiteral -> TextLiteral
+syntax.addTextToTextLiteral t = cases (Chunks l x) -> Chunks l (x Text.++ t)
+-- 
+syntax.addExpresionToTextLiteral : syntax.Expression -> TextLiteral -> TextLiteral
+syntax.addExpresionToTextLiteral e = cases (Chunks l x) -> Chunks (l List.++ [(x, e)]) ""
+
+-- | Same as @Data.Text.splitOn@, except always returning a `NonEmpty` result
+syntax.splitOn : Char -> Text -> Nonempty Text
+syntax.splitOn needle haystack =
+    match Text.split needle haystack with
+        []     -> Nonempty "" []
+        t +: ts -> Nonempty t ts
+
+-- -- | Split `Chunks` by lines
+syntax.linesLiteral : TextLiteral -> Nonempty TextLiteral
+syntax.linesLiteral = cases 
+  (Chunks [] suffix) -> Nonempty.map (t -> Chunks [] t) (splitOn ?\n suffix)
+  (Chunks ((prefix, interpolation) +: pairs0) suffix0) ->
+    splitLines = splitOn ?\n prefix
+    initLines = Nonempty.init splitLines
+    lastLine  = Nonempty.last splitLines
+    match linesLiteral (Chunks pairs0 suffix0) with
+      Nonempty (Chunks pairs1 suffix1) chunks ->
+        List.foldRight
+            Nonempty.cons
+            (Nonempty (Chunks ((lastLine, interpolation) +: pairs1) suffix1) chunks)
+            (List.map (t -> Chunks [] t) initLines)
+
+
+-- -- | Flatten several `Chunks` back into a single `Chunks` by inserting newlines
+syntax.unlinesLiteral : Nonempty TextLiteral -> TextLiteral
+syntax.unlinesLiteral chunks =
+  Nonempty.reduceLeft (chunk1 chunk2 -> chunk1 <> (Chunks [] "\n") <> chunk2) chunks
+
+-- -- | Returns `True` if the `Chunks` represents a blank line
+syntax.emptyLine : TextLiteral -> Boolean
+syntax.emptyLine = cases
+  (Chunks [] ""  ) -> true
+  (Chunks [] "\r") -> true  -- So that `\r\n` is treated as a blank line
+  _ -> false
+
+-- | Return the leading whitespace for a `Chunks` literal
+syntax.leadingSpaces : TextLiteral -> [Char]
+syntax.leadingSpaces chunks = 
+  isSpace c = (c == ?\s) || (c == ?\t)
+  firstText = match chunks with
+    Chunks [] suffix -> suffix
+    Chunks ((prefix, _) +: _ ) _ -> prefix
+  (List.takeWhile isSpace (Text.toCharList firstText))
+
+-- {-| Compute the longest shared whitespace prefix for the purposes of stripping
+--     leading indentation
+-- -}
+syntax.longestSharedWhitespacePrefix : Nonempty TextLiteral -> [Char]
+syntax.longestSharedWhitespacePrefix literals =
+    -- The standard specifies to filter out blank lines for all lines *except*
+    -- for the last line
+    oldLast = Nonempty.last literals
+    oldInit = Nonempty.init literals
+    newInit =  filter (not . emptyLine) oldInit
+    filteredLines = newInit :+ oldLast
+
+    sharedPrefix : [Char] ->{} [Char] ->{} [Char]
+    sharedPrefix ab ac =
+      if List.isPrefixOf ab ac then ab else
+        List.map Tuple.at1 (List.takeWhile (cases (a,b) -> a Char.== b) (List.zip ab ac))
+
+    match List.map leadingSpaces filteredLines with
+        (l +: ls) -> List.foldLeft sharedPrefix l ls
+        []     -> []
+
+syntax.dropLiteral : Nat -> TextLiteral -> TextLiteral
+syntax.dropLiteral n = cases
+  (Chunks [] suffix) -> Chunks [] (Text.drop n suffix)
+  (Chunks ((prefix, interpolation) +: rest) suffix) -> Chunks ((Text.drop n prefix, interpolation) +: rest) suffix
+
+-- {-| Convert a single-quoted `Chunks` literal to the equivalent double-quoted
+--     `Chunks` literal
+-- -}
+syntax.toDoubleQuoted : TextLiteral -> TextLiteral
+syntax.toDoubleQuoted literal =
+    literals = linesLiteral literal
+    longestSharedPrefix = longestSharedWhitespacePrefix literals
+    indent = List.size longestSharedPrefix
+    unlinesLiteral (Nonempty.map (dropLiteral indent) literals)
+
+syntax.reservedKeywords : Set Text
+syntax.reservedKeywords = (Set.fromList
+  [ "if"
+  , "then"
+  , "else"
+  , "let"
+  , "in"
+  , "using"
+  , "missing"
+  , "as"
+  , "Infinity"
+  , "NaN"
+  , "merge"
+  , "Some"
+  , "toMap"
+  , "assert"
+  , "forall"
+  , "with"
+  ])
+
+-- | The set of reserved identifiers for the Dhall language
+-- | Contains also all keywords from "reservedKeywords"
+syntax.reservedIdentifiers : Set Text
+syntax.reservedIdentifiers = Set.union reservedKeywords (Set.fromList
+  [ -- Builtins according to the `builtin` rule in the grammar
+    "Natural/fold"
+  , "Natural/build"
+  , "Natural/isZero"
+  , "Natural/even"
+  , "Natural/odd"
+  , "Natural/toInteger"
+  , "Natural/show"
+  , "Natural/subtract"
+  , "Integer"
+  , "Integer/clamp"
+  , "Integer/negate"
+  , "Integer/show"
+  , "Integer/toDouble"
+  , "Integer/show"
+  , "Natural/subtract"
+  , "Double/show"
+  , "List/build"
+  , "List/fold"
+  , "List/length"
+  , "List/head"
+  , "List/last"
+  , "List/indexed"
+  , "List/reverse"
+  , "Text/replace"
+  , "Text/show"
+  , "Bool"
+  , "True"
+  , "False"
+  , "Optional"
+  , "None"
+  , "Natural"
+  , "Integer"
+  , "Double"
+  , "Text"
+  , "Date"
+  , "Time"
+  , "TimeZone"
+  , "List"
+  , "Type"
+  , "Kind"
+  , "Sort"
+  ]

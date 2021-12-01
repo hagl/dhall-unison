@@ -1,0 +1,186 @@
+use .trunk.syntax 
+use .trunk.syntax.Constant
+use .support.Integer Integer
+
+use .dhall.trunk.support encodeFloat
+
+use base.Natural <=
+use Optional Some
+use List
+
+unique type binary.Term
+  = TPosInt Nat
+  | TNegInt Nat
+  | TPosInteger Natural
+  | TNegInteger Natural
+  | TBytes Bytes
+  | TString Text
+  | TList  [binary.Term]
+  | TMap  [(binary.Term, binary.Term)]
+  | TTagged  Nat binary.Term
+  | TBool Boolean
+  | TNull
+  | TSimple Nat
+  | TFloat Bytes
+
+binary.encodeBuiltin : Builtin -> Text
+binary.encodeBuiltin = cases
+  NaturalBuild -> "Natural/build"
+  NaturalFold -> "Natural/fold"
+  NaturalIsZero -> "Natural/isZero"
+  NaturalEven -> "Natural/even"
+  NaturalOdd -> "Natural/odd"
+  NaturalToInteger -> "Natural/toInteger"
+  NaturalShow -> "Natural/show"
+  NaturalSubtract -> "Natural/subtract"
+  IntegerToDouble -> "Integer/toDouble"
+  IntegerShow -> "Integer/show"
+  IntegerNegate -> "Integer/negate"
+  IntegerClamp -> "Integer/clamp"
+  DoubleShow -> "Double/show"
+  ListBuild -> "List/build"
+  ListFold -> "List/fold"
+  ListLength -> "List/length"
+  ListHead -> "List/head"
+  ListLast -> "List/last"
+  ListIndexed -> "List/indexed"
+  ListReverse -> "List/reverse"
+  TextShow -> "Text/show"
+  TextReplace -> "Text/replace"
+  Bool -> "Bool"
+  Builtin.Optional -> "Optional"
+  Builtin._None -> "None"
+  Builtin.Natural -> "Natural"
+  Builtin.Integer -> "Integer"
+  Double -> "Double"
+  Text -> "Text"
+  List -> "List"
+  Date -> "Date"
+  Time -> "Time"
+  TimeZone -> "TimeZone"
+
+binary.encodeConstant : Constant -> Text
+binary.encodeConstant = cases
+  Constant.Type -> "Type"
+  Constant.Kind -> "Kind"
+  Constant.Sort -> "Sort"
+
+binary.encodeOperator : Operator -> Nat
+binary.encodeOperator = cases
+  Or -> 0
+  And -> 1
+  Operator.Equal -> 2
+  NotEqual -> 3
+  Plus -> 4
+  Times -> 5
+  TextAppend -> 6
+  ListAppend -> 7
+  CombineRecordTerms -> 8
+  Prefer -> 9
+  CombineRecordTypes -> 10
+  Alternative -> 11
+  Equivalent -> 12
+
+
+binary.encode : Expression ->{} Term
+binary.encode expression =
+  sortByFirst : [(a, b)] -> [(a, b)]
+  sortByFirst = List.sortBy Tuple.at1 
+  match expression with
+    Variable "_" n -> match Natural.toNat n with
+      Some m -> TPosInt m
+      None -> TPosInteger n
+    Variable x n -> match Natural.toNat n with
+      Some m -> TList [TString x, TPosInt m]
+      None -> TList [TString x, TPosInteger n]
+    Expression.Builtin Builtin.True -> TBool true
+    Expression.Builtin Builtin.False -> TBool false
+    Expression.Builtin b -> TString (encodeBuiltin b)
+    Expression.Constant c -> TString (encodeConstant c)
+    expression@(Application _ _) -> 
+      loop : [Term] -> Expression -> Term
+      loop arguments = cases  
+        Application f a0 -> loop ((encode a0) +: arguments) f
+        f0 -> TList ([TPosInt 0, encode f0] ++ arguments)
+      loop [] expression
+    Lambda "_" A0 b0 -> TList [ TPosInt 1, encode A0, encode b0]
+    Lambda x A0 b0 -> TList [ TPosInt 1, TString x, encode A0, encode b0]
+    Forall "_" A0 B0 -> TList [TPosInt 2, encode A0, encode B0]
+    Forall x A0 B0 -> TList [TPosInt 2, TString x, encode A0, encode B0]
+    Expression.Operator l0 op r0 -> TList [ TPosInt 3, TPosInt (encodeOperator op), encode l0, encode r0]
+    EmptyList (Application (Builtin List) T0) -> TList [TPosInt 4, encode T0]
+    EmptyList T0 -> TList [TPosInt 28, encode T0]
+    NonEmptyList ts0 -> TList ([TPosInt 4, TNull ] ++ (List.map encode (Nonempty.toList ts0)))
+    Expression.Some t0 -> TList [TPosInt 5, TNull, encode t0]
+    Merge t0 u0 None -> TList [TPosInt 6, encode t0, encode u0]
+    Merge t0 u0 (Some T0) -> TList [TPosInt 6, encode t0, encode u0, encode T0]
+    ToMap t0 None -> TList [TPosInt 27, encode t0]
+    ToMap t0 (Some T0) -> TList [TPosInt 27, encode t0, encode T0]
+    RecordType xTs0 -> TList [TPosInt 7, TMap (sortByFirst (List.map (cases (k, t_T0) -> (TString k, encode t_T0)) xTs0))]
+    RecordLiteral xts0  -> TList [TPosInt 8, TMap (sortByFirst (List.map (cases (k, t0) -> (TString k, encode t0)) xts0))]
+    Field t0 x -> TList [TPosInt 9, encode t0, TString x]
+    ProjectByLabels t0 xs -> TList ([TPosInt 10, encode t0] ++ (List.map TString xs))
+    ProjectByType t0 T0 -> TList [TPosInt 10, encode t0, TList [encode T0]]
+    UnionType xTs0 -> TList [TPosInt 11, TMap (sortByFirst (List.map (cases (k, t) -> (TString k, Optional.getOrElse TNull (Optional.map encode t))) xTs0))]
+    If t0 l0 r0 -> TList [TPosInt 14, encode t0, encode l0, encode r0]
+    NaturalLiteral n -> match Natural.toNat n with
+      Some nat -> TList [TPosInt 15, TPosInt nat]
+      None -> TList [TPosInt 15, TPosInteger n]
+    IntegerLiteral (Integer false natural) -> match Natural.toNat natural with
+      Some nat -> TList [TPosInt 16, TPosInt nat]
+      None -> TList [TPosInt 16, TPosInteger natural]
+    IntegerLiteral (Integer true natural) -> 
+      natural1 = natural Natural.- one
+      match Natural.toNat natural1 with
+        Some nat -> TList [TPosInt 16, TNegInt nat]
+        None -> TList [TPosInt 16, TNegInteger natural1]
+    DoubleLiteral d -> TFloat (encodeFloat d)
+    Expression.TextLiteral (Chunks xys0 z) -> TList ((TPosInt 18) +: List.foldRight (cases (t,ex) -> acc -> [TString t, encode ex] ++ acc) [TString z] xys0)
+    Assert T0 -> TList [TPosInt 19, encode T0]
+    Let _ _ _ _ ->
+      loop difference = cases
+        Let x (Some A0) a0 c ->
+          loop (difference . (list -> [TString x, encode A0, encode a0] ++ list)) c
+        Let x None a0 c ->
+          loop (difference . (list -> [TString x, TNull, encode a0] ++ list)) c
+        z0 -> TList ((TPosInt 25) +: (difference [ encode z0 ]))
+      loop id expression
+    Annotation t0 T0 -> TList [ TPosInt 26, encode t0, encode T0]
+    With e0 ks v0 -> TList [ TPosInt 29, encode e0, TList (List.map TString (Nonempty.toList ks)), encode v0]
+    Completion T0 r0 -> TList [TPosInt 3, TPosInt 13, encode T0, encode r0]
+    -- --DateLiteral d -> DateLiteral d
+    -- --TimeLiteral d -> TimeLiteral d
+    -- --TimeZoneLiteral z -> TimeZoneLiteral z
+
+
+binary.Term.toBytes: Term -> Bytes
+binary.Term.toBytes = cases
+  TPosInt n -> majorTypeIntArg 0 n
+  TNegInt n -> majorTypeIntArg 1 n
+--   TPosInteger Natural ->
+--   TNegInteger Natural ->
+  TBytes bytes -> (majorTypeIntArg 2 (Bytes.size bytes)) Bytes.++ bytes
+  TString text ->
+    bytes = Text.toUtf8 text
+    (majorTypeIntArg 3 (Bytes.size bytes)) Bytes.++ bytes
+  TList  terms ->
+    List.foldLeft (b -> t -> b Bytes.++ (Term.toBytes t)) (majorTypeIntArg 4 (List.size terms)) terms
+  TMap  tuples -> 
+    List.foldLeft (b -> cases (k, v) -> b Bytes.++ (Term.toBytes k) Bytes.++ (Term.toBytes v)) (majorTypeIntArg 5 (List.size tuples)) tuples
+  TTagged tag term ->  (majorTypeIntArg 6 tag) Bytes.++ (Term.toBytes term)
+  TBool bool -> (majorTypeIntArg 7 (if bool then 21 else 20)) 
+  TNull -> majorTypeIntArg 7 22
+  TSimple n | n <= 0xFF -> majorTypeIntArg 7 n
+  TFloat bytes -> match Bytes.size bytes with
+    2 ->  Bytes.fromList [(Nat.shiftLeft 7 5) + 25] Bytes.++ bytes
+    4 ->  Bytes.fromList [(Nat.shiftLeft 7 5) + 26] Bytes.++ bytes
+    8 ->  Bytes.fromList [(Nat.shiftLeft 7 5) + 27] Bytes.++ bytes
+
+use Nat
+binary.Term.internal.majorTypeIntArg : Nat -> Nat -> Bytes
+binary.Term.internal.majorTypeIntArg mode = cases
+  value | value < 24 -> Bytes.fromList [(Nat.shiftLeft mode 5) + value]
+  value | value <= 0xFF -> Bytes.fromList [(Nat.shiftLeft mode 5) + 24, value]
+  value | value <= 0xFFFF -> Bytes.fromList [(Nat.shiftLeft mode 5) + 25] Bytes.++ (Bytes.encodeNat16be value)
+  value | value <= 0xFFFFFFFF -> Bytes.fromList [(Nat.shiftLeft mode 5) + 26] Bytes.++ (Bytes.encodeNat32be value)
+  value -> Bytes.fromList [(Nat.shiftLeft mode 5) + 27] Bytes.++ (Bytes.encodeNat64be value)

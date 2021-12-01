@@ -15,9 +15,10 @@ To install the latest version in your Unison codebase use the following ucm comm
 pull https://github.com/hagl/dhall-unison:.dhall.trunk .external.dhall.trunk
 ```
 
+
 ## Usage
 
-`external.dhall.trunk.Dhall.evaluate : Text -> Either Text DhallValue` will evaluate a Dhall program into a DhallValue or and error message. 
+`external.dhall.trunk.Dhall.evaluate : Text -> Either Text DhallValue` will evaluate a Dhall program into a DhallValue or an error message. 
 
 A complete code example is given in `external.dhall.trunk.README`
 

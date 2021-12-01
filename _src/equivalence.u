@@ -1,0 +1,4 @@
+use base
+
+equivalence.equivalent : Expression -> Expression -> Boolean
+equivalence.equivalent e1 e2 = false

@@ -1,0 +1,141 @@
+use .dhall.trunk.syntax 
+use .dhall.trunk.binary 
+use .dhall.trunk.binary Term 
+use .dhall.trunk.syntax.Constant
+use .dhall.support.Integer Integer
+
+use base.Natural <=
+use Optional Some
+use List
+use Text
+
+testsuite.updateResults : (Nat, Nat) -> (Nat, Nat) ->(Nat, Nat)
+testsuite.updateResults = cases (success0, fail0) -> cases (success1, fail1) -> (success0 + success1, fail0 + fail1)
+
+testsuite.printTestStatus : Text -> (Nat, Nat) ->  ()
+testsuite.printTestStatus dir = cases (success, fail) -> printLine(
+      (Nat.toText (success + fail)) ++ " total tests ( ✅ " ++
+      (Nat.toText success) ++ " passed, 🚫 " ++ (Nat.toText fail) ++ " failed) in directory " ++ dir)
+
+testsuite.runTestsRecursive : Text -> Text-> (Text -> Text -> Boolean) -> (Nat, Nat)
+testsuite.runTestsRecursive testDirectory testSuffix testRunner =
+  removeSuffix : Text -> Text -> Optional Text
+  removeSuffix suffix text =
+    if size suffix > size text then None 
+      else
+        d = Int.truncate0 (size text - (size suffix))
+        if drop d text == suffix then Some (take d text) else None
+
+  printLine ("Running tests in " ++ testDirectory)
+  fp = FilePath.FilePath testDirectory
+  contents = io.directoryContents fp
+  tests = filterMap (removeSuffix testSuffix) contents
+  isSubfolder f = 
+    path = testDirectory ++ "/" ++ f
+    if io.isDirectory (FilePath.FilePath path) && (f != ".") && (f != "..") then Some(path) else None
+  subdirs = filterMap isSubfolder contents
+  test t = 
+    printLine t
+    result = testRunner testDirectory t
+    printLine ((if result then "✅" else "🚫")++ " " ++ t)
+    if (result) then (1, 0) else (0, 1)
+  folderTestResult = List.foldLeft (acc -> t -> updateResults acc (test t)) (0, 0) tests
+  result = List.foldLeft (acc -> d -> updateResults acc (runTestsRecursive d testSuffix testRunner)) folderTestResult subdirs
+  printTestStatus testDirectory result
+  result
+
+testsuite.parseTestcase : FilePath -> Either Text Expression
+testsuite.parseTestcase inputPath =  
+  input = io.openFile inputPath FileMode.Read
+  inputBytes = getBytes input (base.io.getFileSize inputPath) 
+  inputText = Text.fromUtf8 inputBytes
+  io.closeFile input
+  parseText completeExpression inputText
+
+testsuite.encodeExpression : Expression -> Bytes
+testsuite.encodeExpression expression = 
+  encoded = encode expression
+  Term.toBytes encoded
+
+testsuite.parseSuccessTest : Text -> Text -> Boolean
+testsuite.parseSuccessTest testDir name =
+  use Text
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")
+  bytes = Optional.map encodeExpression (Either.right (parseTestcase testPath))
+  checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhallb")
+  check = io.openFile checkPath FileMode.Read
+  checkBytes = getBytes check (base.io.getFileSize checkPath) 
+  io.closeFile check
+  success = bytes === Some checkBytes
+  success
+
+testsuite.parseFailureTest : Text -> Text -> Boolean
+testsuite.parseFailureTest testDir name =
+  use Text
+  inputPath = FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")
+  input = io.openFile inputPath FileMode.Read
+  inputBytes = getBytes input (base.io.getFileSize inputPath) 
+  io.closeFile input
+  match catch '(
+    match parseText completeExpression (Text.fromUtf8 inputBytes) with
+      Right exp -> false
+      _ -> true
+  ) with 
+    Left (Failure _ t _ ) -> 
+      printLine("Exception: " ++ t)
+      true
+    Right result -> result 
+
+testsuite.alphaNormalizationTest : Text -> Text -> Boolean
+testsuite.alphaNormalizationTest testDir name =
+  use Text
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")
+  use .dhall.trunk.alpha_normalization
+  use .dhall.trunk.utils
+  normalized = Optional.map alphaNormalize (Either.right (parseTestcase testPath))
+  bytes = Optional.map encodeExpression normalized
+  checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")
+  checkBytes = Optional.map encodeExpression (Either.right (parseTestcase checkPath))
+  result = bytes === checkBytes
+  if (result) then true
+  else
+    print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
+    printLine("Normalized:\n" ++ (print normalized))
+    printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+    false
+
+testsuite.normalizationTest : Text -> Text -> Boolean
+testsuite.normalizationTest testDir name =
+  use Text
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")
+  use .dhall.trunk.alpha_normalization
+  use .dhall.trunk.utils
+  normalized = Optional.map betaNormalize (Either.right (parseTestcase testPath))
+  bytes = Optional.map encodeExpression normalized
+  checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")
+  checkBytes = Optional.map encodeExpression (Either.right (parseTestcase checkPath))
+  result = bytes === checkBytes
+  if (result) then true
+  else
+    print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
+    printLine("Normalized:\n" ++ (print normalized))
+    printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+    false
+
+
+testsuite.runTests path = 
+  total = List.foldLeft updateResults (0,0) [
+    runTestsRecursive  (path ++ "/tests/normalization") "A.dhall" normalizationTest,
+    runTestsRecursive  (path ++ "/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
+    runTestsRecursive  (path ++ "/tests/parser/success") "A.dhall" parseSuccessTest,
+    runTestsRecursive  (path ++ "/tests/parser/failure") ".dhall" parseFailureTest,
+  ]
+  printTestStatus path total
+
+
+testsuite.runTestSuite: '()
+testsuite.runTestSuite _ = 
+  args = !getArgs
+  match List.head args with
+    None -> printLine "Usage: run runTestSuite <path to local copy of https://github.com/dhall-lang/dhall-lang>"
+    Some path -> runTests path |> '()

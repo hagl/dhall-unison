@@ -1,0 +1,112 @@
+-- TODO
+utils.escapeText: Text -> Text
+utils.escapeText t = t
+
+utils.splitOn: Text -> Text -> [Text]
+utils.splitOn separator text = 
+  sep = Text.toCharList separator
+  t = Text.toCharList text
+  go : [Char] -> [Char] -> [[Char]] -> [[Char]]
+  go l cur acc = match l with 
+    [] -> acc :+ cur
+    (h +: t) -> match List.stripPrefix sep l with
+      None -> go t (cur :+ h) acc
+      Optional.Some l -> go l [] (acc :+ cur)
+  List.map Text.fromCharList (go t [] [])
+
+use Text
+
+utils.printExpression: Expression -> Text
+utils.printExpression = cases 
+  Lambda x A0 b0 -> "λ(" ++ x ++ ": " ++ (printExpression A0) ++ ") -> " ++ printExpression b0
+  Forall x A0 B0 -> "∀(" ++ x ++ ": " ++ (printExpression A0) ++ ") -> " ++ printExpression B0
+  Let x t a0 b0 -> 
+    ot = match t with 
+      Optional.Some T -> " : " ++ (printExpression T)
+      None -> ""
+    "let " ++ x ++ ot ++ " = " ++ (printExpression a0) ++ " in " ++ (printExpression b0)
+  Variable x n -> if (Natural.isZero n) then x else x ++ "@" ++ (Natural.toDecimalText n)
+  If t0 l0 r0 -> "if " ++ (printExpression t0) ++ " then " ++ (printExpression l0) ++ " else " ++ (printExpression r0)
+  Merge t0 u0 t -> "???Merge t0 u0 t"
+  ToMap t0 t -> "???ToMap t0 t"
+  EmptyList T0 -> "[] : " ++ (printExpression T0)
+  NonEmptyList ts0 -> "[" ++ (List.foldLeft (++) "" (List.intersperse ", " (List.map printExpression (Nonempty.toList ts0)))) ++ "]"
+  Annotation t0 T0 -> (printExpression t0) ++ ": " ++ (printExpression T0)
+  Expression.Operator l0 op r0 -> (printExpression l0) ++ (printOperator op) ++ (printExpression r0)
+  Application f0 a0 -> (printExpression f0) ++ " " ++ (printExpression a0)
+  Field t0 y -> "(" ++ (printExpression t0) ++ ")." ++ y
+  ProjectByLabels t0 xs -> "(" ++ (printExpression t0) ++ ").{" ++ (List.foldLeft (++) "" (List.intersperse ", " xs)) ++ "}"
+  ProjectByType t0 T0 -> "(" ++ (printExpression t0) ++ ").(" ++ (printExpression T0) ++ ")"
+  Completion T0 r0 -> "???Completion T0 r0"
+  Assert T0 -> "???assert : " ++ (printExpression T0)
+  With e0 ks v0 -> "???With e0 ks v0"
+  DoubleLiteral d -> Float.toText d
+  NaturalLiteral n -> Natural.toDecimalText n
+  IntegerLiteral n -> Integer.toText n
+  Expression.TextLiteral (Chunks xys0 z) -> (List.foldLeft (++) "" (List.intersperse ", " (List.map (cases (t, ex) -> t ++ "{" ++ (printExpression ex) ++ "}") xys0))) ++ z
+  RecordType ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ ": " ++ (printExpression e)) ks0)) ++ "}"
+  RecordLiteral ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ " = " ++ (printExpression e)) ks0)) ++ "}"  
+  UnionType ks0 -> "???UnionType ks0"
+  Expression.Some a0 -> "Some " ++ (printExpression a0)
+  Expression.Builtin b -> printBuiltin b
+  Expression.Constant c -> printConstant c
+
+utils.printConstant : Constant -> Text  
+utils.printConstant = cases 
+  Constant.Type -> "Type"
+  Constant.Kind -> "Kind"
+  Constant.Sort -> "Sort"
+
+utils.printBuiltin : Builtin -> Text
+utils.printBuiltin = cases
+  Builtin.NaturalBuild -> "Natural/build"
+  Builtin.NaturalFold -> "Natural/fold"
+  Builtin.NaturalIsZero -> "Natural/isZero"
+  Builtin.NaturalEven -> "Natural/even"
+  Builtin.NaturalOdd -> "Natural/odd"
+  Builtin.NaturalToInteger -> "Natural/toInteger"
+  Builtin.NaturalShow -> "Natural/show"
+  Builtin.NaturalSubtract -> "Natural/subtract"
+  Builtin.IntegerToDouble -> "Integer/toDouble"
+  Builtin.IntegerShow -> "Integer/show"
+  Builtin.IntegerNegate -> "Integer/negate"
+  Builtin.IntegerClamp -> "Integer/clamp"
+  Builtin.DoubleShow -> "Double/show"
+  Builtin.ListBuild -> "List/build"
+  Builtin.ListFold -> "List/fold"
+  Builtin.ListLength -> "List/length"
+  Builtin.ListHead -> "List/head"
+  Builtin.ListLast -> "List/last"
+  Builtin.ListIndexed -> "List/indexed"
+  Builtin.ListReverse -> "List/reverse"
+  Builtin.TextShow -> "Text/show"
+  Builtin.TextReplace -> "Text/replace"
+  Builtin.Bool -> "Bool"
+  Builtin.Optional -> "Optional"
+  Builtin.Natural -> "Natural"
+  Builtin.Integer -> "Integer"
+  Builtin.Double -> "Double"
+  Builtin.Text -> "Text"
+  Builtin.List -> "List"
+  Builtin.True -> "True"
+  Builtin.False -> "False"
+  Builtin._None -> "None"
+  Builtin.Date -> "Date"
+  Builtin.Time -> "Time"
+  Builtin.TimeZone -> "TimeZone"
+
+utils.printOperator : Operator -> Text
+utils.printOperator = cases 
+    Operator.Or -> "||"
+    Operator.Plus -> "+"
+    Operator.TextAppend -> "++"
+    Operator.ListAppend -> "#"
+    Operator.And -> "&&"
+    Operator.CombineRecordTerms -> "∧"
+    Operator.Prefer -> "⫽"
+    Operator.CombineRecordTypes -> "⩓"
+    Operator.Times -> "*"
+    Operator.Equal -> "=="
+    Operator.NotEqual -> "!="
+    Operator.Equivalent -> "=="
+    Operator.Alternative -> "?"
