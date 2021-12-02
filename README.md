@@ -37,15 +37,15 @@ run .external.dhall.trunk.testsuite.runTestSuite <path to local copy of github.c
 ```
 At the time of this writing this will give the following results
 ```
-658 total tests ( ✅ 518 passed, 🚫 140 failed) 
+658 total tests ( ✅ 565 passed, 🚫 93 failed )
 ```
 
 ### Limitations 
 
 The following features are not yet supported
-* date & time types 
-* importing of external files 
 * type-checking
+* importing of external files
+* date & time types
 
 ## Copyright and license
 

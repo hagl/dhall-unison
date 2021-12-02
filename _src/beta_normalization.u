@@ -199,7 +199,8 @@ beta_normalization.betaNormalizeApplication f a =
   match (betaNormalize f, a, betaNormalize a) with
   (Builtin NaturalBuild, g, _) -> betaNormalize (
     Application
-      (Application g
+      (Application
+          (Application g (Builtin Natural))
           (Lambda "x" (Builtin Natural)
               (Operator (Variable "x" zero) Plus (NaturalLiteral one))
           )
@@ -261,7 +262,7 @@ beta_normalization.betaNormalizeApplication f a =
             Optional.Some (s, ss) -> 
               match loop ss with 
                 Chunks xys z -> Chunks ((s, replacement) +: xys) z
-          Expression.TextLiteral (loop (splitOn needle haystack)) 
+          betaNormalize(Expression.TextLiteral (loop (splitOn needle haystack)))
   (Application (Builtin ListBuild) A0, g, _) -> 
     betaNormalize
       (Application

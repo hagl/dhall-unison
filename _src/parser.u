@@ -134,8 +134,8 @@ parser.labels =
 
   nonEmptyLabels =
     (optional (comma *> whitespace)) *> 
-      (sepBy anyLabelOrSome (whitespace *> comma *> whitespace)) <* 
-      (whitespace *> optional (comma *> whitespace) *> closeBrace)
+      (sepBy1 anyLabelOrSome (whitespace *> comma *> whitespace)) <* 
+      (whitespace *> optional (comma *> whitespace) *> closeBrace) $> Nonempty.toList
 
   openBrace *> whitespace *> (or nonEmptyLabels emptyLabels)
 
@@ -236,16 +236,23 @@ parser.numericDoubleLiteral =
 
 parser.doubleLiteral : Parser e Char Float
 parser.doubleLiteral = 
+  err : Text -> Text -> Parser e Char Float
+  err text reason = getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ text ++ "' cannot be parsed as float. " ++ reason)))))
   textToFloat : Text -> Parser e Char Float
   textToFloat s = match Float.fromText s with
-    Optional.Some f -> Parser.const f
-    None -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' cannot be parsed as float"))))))
-  Parser.flatMap textToFloat (oneOf [
-      string "-Infinity"
-    , string "Infinity"  
-    , string "NaN"
-    , numericDoubleLiteral
-  ])
+    Optional.Some f -> match Float.toText f with
+      "NaN" -> err s ""
+      "Infinity" -> err s " The number is too big"
+      "-Infinity" -> err s " The number is too small"
+      _ -> Parser.const f
+    None -> err s ""
+  -- Parser.flatMap textToFloat (oneOf [
+  oneOf [
+      string "-Infinity" $> 'support.negInfinity
+    , string "Infinity"  $> 'support.infinity
+    , string "NaN" $> 'support.nan
+    , numericDoubleLiteral >>= textToFloat 
+  ]
 
 test> parser.doubleLiteral.tests.ex1 = check (parseText parser.doubleLiteral "123.456789e-100" === Right 123.456789e-100)
 test> parser.doubleLiteral.tests.ex2 = check (parseText parser.doubleLiteral "+123.456789e+100" === Right 123.456789e+100)
@@ -400,7 +407,7 @@ parser.alternative2 dExpression =
     (string "let" *> nonemptyWhitespace *> nonreservedLabel <* whitespace) ^
     (Parser.optional (string ":" *> nonemptyWhitespace *> dExpression <* whitespace)) ^
     (string "=" *> whitespace *> dExpression <* whitespace)
-  ((many letBinding) <* string "in" <* whitespace) ^ dExpression $> cases
+  ((many letBinding) <* string "in" <* nonemptyWhitespace) ^ dExpression $> cases
     (ls, ex) -> 
       List.foldRight (cases ((l, mT), e) -> ex -> Let l mT e ex) ex ls
 

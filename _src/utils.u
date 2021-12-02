@@ -27,8 +27,8 @@ utils.printExpression = cases
     "let " ++ x ++ ot ++ " = " ++ (printExpression a0) ++ " in " ++ (printExpression b0)
   Variable x n -> if (Natural.isZero n) then x else x ++ "@" ++ (Natural.toDecimalText n)
   If t0 l0 r0 -> "if " ++ (printExpression t0) ++ " then " ++ (printExpression l0) ++ " else " ++ (printExpression r0)
-  Merge t0 u0 t -> "???Merge t0 u0 t"
-  ToMap t0 t -> "???ToMap t0 t"
+  Merge t0 u0 t -> "merge " ++ (printExpression t0) ++ (printExpression u0) ++ (Optional.getOrElse "" (Optional.map (e -> " : " ++ printExpression(e)) t))
+  ToMap t0 t -> "toMap " ++ (printExpression t0) ++ (Optional.getOrElse "" (Optional.map (e -> " : " ++ printExpression(e)) t))
   EmptyList T0 -> "[] : " ++ (printExpression T0)
   NonEmptyList ts0 -> "[" ++ (List.foldLeft (++) "" (List.intersperse ", " (List.map printExpression (Nonempty.toList ts0)))) ++ "]"
   Annotation t0 T0 -> (printExpression t0) ++ ": " ++ (printExpression T0)
@@ -37,16 +37,20 @@ utils.printExpression = cases
   Field t0 y -> "(" ++ (printExpression t0) ++ ")." ++ y
   ProjectByLabels t0 xs -> "(" ++ (printExpression t0) ++ ").{" ++ (List.foldLeft (++) "" (List.intersperse ", " xs)) ++ "}"
   ProjectByType t0 T0 -> "(" ++ (printExpression t0) ++ ").(" ++ (printExpression T0) ++ ")"
-  Completion T0 r0 -> "???Completion T0 r0"
-  Assert T0 -> "???assert : " ++ (printExpression T0)
-  With e0 ks v0 -> "???With e0 ks v0"
+  Completion T0 r0 -> (printExpression T0) ++ "::" ++ (printExpression r0)
+  Assert T0 -> "assert : " ++ (printExpression T0)
+  With e0 ks v0 -> (printExpression e0) ++ (Text.join "." (Nonempty.toList ks)) ++ " = " ++ (printExpression v0)
   DoubleLiteral d -> Float.toText d
   NaturalLiteral n -> Natural.toDecimalText n
   IntegerLiteral n -> Integer.toText n
   Expression.TextLiteral (Chunks xys0 z) -> (List.foldLeft (++) "" (List.intersperse ", " (List.map (cases (t, ex) -> t ++ "{" ++ (printExpression ex) ++ "}") xys0))) ++ z
   RecordType ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ ": " ++ (printExpression e)) ks0)) ++ "}"
   RecordLiteral ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ " = " ++ (printExpression e)) ks0)) ++ "}"  
-  UnionType ks0 -> "???UnionType ks0"
+  UnionType ks0 -> 
+    unionElements = List.map (cases 
+    (k, None) -> k
+    (k, Optional.Some ex) -> k ++ ": " ++ (printExpression ex)) ks0
+    "<" ++ (Text.join " | " unionElements)++ ">"
   Expression.Some a0 -> "Some " ++ (printExpression a0)
   Expression.Builtin b -> printBuiltin b
   Expression.Constant c -> printConstant c

@@ -1,4 +1,10 @@
-use base
+use .dhall.trunk.alpha_normalization
+use .dhall.trunk.beta_normalization
+use .dhall.trunk.binary
+use .dhall.trunk.syntax
 
 equivalence.equivalent : Expression -> Expression -> Boolean
-equivalence.equivalent e1 e2 = false
+equivalence.equivalent e1 e2 =
+  encodeNormalized e = e |> betaNormalize |> alphaNormalize |> encode |> Term.toBytes
+  encodeNormalized e1 === encodeNormalized e2
+

@@ -1,0 +1,164 @@
+unique type DhallValue = 
+  DhallList [DhallValue]
+  | DhallBoolean Boolean
+  | DhallFloat Float
+  | DhallNatural Natural
+  | DhallInteger Integer
+  | DhallText Text
+  | DhallRecord (Map Text DhallValue)
+  | DhallOptional (Optional DhallValue)
+
+DhallValue.fromExpression : Expression -> Either Text DhallValue
+DhallValue.fromExpression expr = 
+  go : Expression -> Text -> Either Text DhallValue
+  go expression path =
+    fail : Text -> Either Text DhallValue
+    fail t = Left ("Expression is not fully evaluated, contains an expression of type " ++ t ++ " at path " ++ path)
+    match expression with
+      Variable _ _ -> fail "Variable"
+      Lambda _ _ _ -> fail "Lambda"
+      Forall _ _ _ -> fail "Forall"
+      Let _ _ _ _ -> fail "Let"
+      If _ _ _ -> fail "If"
+      Merge _ _ _ -> fail "Merge"
+      ToMap _ _ -> fail "ToMap"
+      EmptyList T0 -> Right (DhallList [])
+      NonEmptyList ts -> match List.partitionEithers (List.mapIndexed (n -> x -> go x (path ++ "[" ++ (Nat.toText n) ++ "]")) (Nonempty.toList ts) with
+        ([], rights) -> Right (DhallList rights)
+        (h +: _, _) -> Left h
+      Annotation t0 T0 -> go t0 path
+      Expression.Operator l0 op r0 -> fail ("Operator " ++ (printOperator op))
+      Application f0 a0 -> fail "Application"
+      Field t0 y -> fail "Field"
+      ProjectByLabels t0 xs -> fail "ProjectByLabels"
+      ProjectByType t0 T0 -> fail "ProjectByType"
+      Completion T0 r0 -> fail "Completion"
+      Assert T0 -> fail "Assert"
+      With e0 ks v0 -> fail "With"
+      DoubleLiteral d -> Right (DhallFloat d)
+      NaturalLiteral n -> Right (DhallNatural n)
+      IntegerLiteral n -> Right (DhallInteger n)
+      Expression.TextLiteral (Chunks [] z) -> Right (DhallText z)
+      Expression.TextLiteral _ -> fail "Text with nested expressions"
+      RecordType ks0 -> fail "RecordType"
+      RecordLiteral ks0 -> match List.partitionEithers (List.map (cases (k, t) -> (Either.mapRight (x -> (k,x)) (go t (path ++ "." ++ k)))) ks0) with
+        ([], rights) -> Right (DhallRecord (Map.fromList rights))
+        (h +: _, _) -> Left h
+      UnionType ks0 -> fail "UnionType"
+      Expression.Some a0 -> match go a0 path with
+        Right v -> Right (DhallOptional (Optional.Some v))
+        Left t -> Left t
+      Expression.Builtin b -> fail "Builtin"
+      Expression.Constant c -> fail "Constant"
+  go expr ""
+
+
+{{ run a Dhall programm}}
+evaluate : Text -> Either Text DhallValue
+evaluate input = 
+  parsedExpression = parseText completeExpression input
+  normalizedExpression = Either.mapRight betaNormalize parsedExpression
+  match normalizedExpression with 
+    Right expr -> DhallValue.fromExpression expr
+    Left error -> Left error
+
+> evaluate example1.input
+  |> cases Right x -> convertConfigs x
+
+README.example1.input = Text.join "\n" [
+  , "  let Config : Type =                                             "
+  , "        { home : Text                                             "
+  , "        , privateKey : Text                                       "
+  , "        , publicKey : Text                                        "
+  , "        }                                                         "
+  , "                                                                  "
+  , "  let makeUser : Text -> Config = \\(user : Text) ->              "
+  , "        let home       : Text   = \"/home/${user}\"               "
+  , "        let privateKey : Text   = \"${home}/.ssh/id_ed25519\"     "
+  , "        let publicKey  : Text   = \"${privateKey}.pub\"           "
+  , "        let config     : Config = { home, privateKey, publicKey } "
+  , "        in  config                                                "
+  , "                                                                  "
+  , "  let configs : List Config =                                     "
+  , "        [ makeUser \"bill\"                                       "
+  , "        , makeUser \"jane\"                                       "
+  , "        ]                                                         "
+  , "                                                                  "
+  , "  in  configs                                                    "
+  ]
+
+unique type README.example1.UserConfig = UserConfig Text Text Text
+
+README.example1.convertConfigs : DhallValue -> List UserConfig
+README.example1.convertConfigs = cases 
+  DhallList list -> list |> List.map (cases DhallRecord map -> 
+          getString key = Map.get key map |> cases (Optional.Some (DhallText text)) -> text
+          UserConfig (getString "home") (getString "publicKey") (getString "privateKey"))
+
+README : Doc
+README = 
+  {{
+  # dhall-unison
+  
+  [dhall-unison](https://github.com/hagl/dhall-unison) is an implementation of the [Dhall configuration language](https://dhall-lang.org/) in Unison.
+
+  ## Status
+  
+  This library is currently under development and will have incompatible changes in the future. 
+
+  ## Example
+
+  Let's look at the function example from the dhall homepage: 
+  
+  ```dhall
+  let Config : Type =
+      { home : Text
+      , privateKey : Text
+      , publicKey : Text
+      }
+
+  let makeUser : Text -> Config = \\(user : Text) ->
+      let home       : Text   = "/home/${user}"
+      let privateKey : Text   = "${home}/.ssh/id_ed25519"
+      let publicKey  : Text   = "${privateKey}.pub"
+      let config     : Config = { home, privateKey, publicKey }
+      in  config
+
+  let configs : List Config =
+      [ makeUser "bill"
+      , makeUser "jane"
+      ]
+
+  in configs
+
+  ```
+
+  This dhall expression would usually be read from a file, as a Unison text literal it requires some escaping of quotes and backslashes: 
+
+  @source{example1.input}
+
+  To parse and beta-normalize (evaluate) the expression run
+
+  ```
+    evaluate example1.input
+  ```
+
+  Once there is some possibility for reflection/meta-programming in Unison, 
+  it should be easy to convert a dhall expression into a Unison value and vice versa to create a Dhall type for a Unison type.
+  For now the result of the evaluation can be converted manually into the desired form by pattern matching on {type DhallValue}, e.g.
+
+  @source{example1.convertConfigs}
+
+  ```
+    evaluate input |> Either.mapRight convertConfigs
+  ```  
+
+  While a dhall expression can be a type or a function that can be used in other expressions, the {evaluate} function will only succeed (i.e. produce a  {Right DhallValue}) 
+  when the dhall expression can be fully evaluated to a literal value. 
+
+  ```
+  evaluate "λ(x: Nat) → x + 1"
+  ```
+  
+  }}
+
