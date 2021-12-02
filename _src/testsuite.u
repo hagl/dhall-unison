@@ -35,7 +35,6 @@ testsuite.runTestsRecursive testDirectory testSuffix testRunner =
     if io.isDirectory (FilePath.FilePath path) && (f != ".") && (f != "..") then Some(path) else None
   subdirs = filterMap isSubfolder contents
   test t = 
-    printLine t
     result = testRunner testDirectory t
     printLine ((if result then "✅" else "🚫")++ " " ++ t)
     if (result) then (1, 0) else (0, 1)
@@ -125,10 +124,10 @@ testsuite.normalizationTest testDir name =
 
 testsuite.runTests path = 
   total = List.foldLeft updateResults (0,0) [
-    runTestsRecursive  (path ++ "/tests/normalization") "A.dhall" normalizationTest,
-    runTestsRecursive  (path ++ "/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
+    -- runTestsRecursive  (path ++ "/tests/normalization") "A.dhall" normalizationTest,
+    -- runTestsRecursive  (path ++ "/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
     runTestsRecursive  (path ++ "/tests/parser/success") "A.dhall" parseSuccessTest,
-    runTestsRecursive  (path ++ "/tests/parser/failure") ".dhall" parseFailureTest,
+    -- runTestsRecursive  (path ++ "/tests/parser/failure") ".dhall" parseFailureTest,
   ]
   printTestStatus path total
 
