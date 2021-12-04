@@ -37,7 +37,7 @@ run .external.dhall.trunk.testsuite.runTestSuite <path to local copy of github.c
 ```
 At the time of this writing this will give the following results
 ```
-658 total tests ( ✅ 565 passed, 🚫 93 failed )
+658 total tests ( ✅ 584 passed, 🚫 74 failed )
 ```
 
 ### Limitations 
