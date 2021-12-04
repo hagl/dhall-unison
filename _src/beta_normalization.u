@@ -6,7 +6,6 @@ use Natural
 beta_normalization.without: [a] -> [a] -> [a]
 beta_normalization.without l r = List.filter (x -> not(x `elem` r)) l
 
-
 beta_normalization.betaNormalize: Expression -> Expression 
 beta_normalization.betaNormalize e = 
   normalized = match e with
@@ -17,9 +16,10 @@ beta_normalization.betaNormalize e =
       t1 = betaNormalize t0
       l1 = betaNormalize l0
       r1 = betaNormalize r0
-      match t1 with 
-        Builtin True -> l1
-        Builtin False -> r1
+      match (t1, l1, r1) with
+        (Builtin True, _, _) -> l1
+        (Builtin False, _, _) -> r1
+        (_, Builtin True, Builtin False) -> t1
         _ -> if (equivalent l0 r0) then l1 else If t1 l1 r1
     Operator l0 Operator.Or r0 ->
       l1 = betaNormalize l0
@@ -69,20 +69,19 @@ beta_normalization.betaNormalize e =
         (NaturalLiteral n, NaturalLiteral m) -> NaturalLiteral (n * m)
         (NaturalLiteral z, _) | isZero z -> NaturalLiteral zero
         (_, NaturalLiteral z) | isZero z -> NaturalLiteral zero
-        (NaturalLiteral one, _) -> r1
-        (_, NaturalLiteral one) -> l1
+        (NaturalLiteral n, _) | n == one -> r1
+        (_, NaturalLiteral n) | n == one -> l1
         _ -> Operator l1 Times r1
     TextLiteral chunks0 ->
       loop: TextLiteral -> TextLiteral
       loop = cases
-        (Chunks l z0) -> match unsnoc l with 
+        (Chunks l z0) -> match uncons l with
           None -> (Chunks l z0)
-          Optional.Some (ss0, (s0, t0)) -> 
+          Optional.Some ((s0, t0), ss0) ->
             t1 = betaNormalize t0
             match t1 with
               TextLiteral chunks -> ((Chunks [] s0) <> chunks) <> (loop (Chunks ss0 z0))
               _ -> Chunks [(s0, t1)] "" <> loop (Chunks ss0 z0)
-        chunks -> chunks
       match loop chunks0 with 
         Chunks [("", t)] "" -> t
         chunks1 -> Expression.TextLiteral chunks1
@@ -144,7 +143,7 @@ beta_normalization.betaNormalize e =
         mr = Map.fromList xrs
         combine : Expression ->{} Expression ->{} Expression
         combine l r = Operator l CombineRecordTypes r
-        RecordType (List.sortBy Tuple.at1 (Map.toList (Map.unionWith combine ml mr)))
+        betaNormalize(RecordType (List.sortBy Tuple.at1 (Map.toList (Map.unionWith combine ml mr))))
       (ls1, rs1) -> Operator ls1 CombineRecordTypes rs1
     ToMap t0 None -> match betaNormalize t0 with
       RecordLiteral (xv +: xvs) ->
@@ -188,14 +187,10 @@ beta_normalization.betaNormalize e =
     Application f g ->
       betaNormalizeApplication f g
     Expression.Some t0 -> Expression.Some (betaNormalize t0)
-  -- Debug.watch (" ** " ++ (printExpression e) ++ "\n -> " ++ (printExpression normalized)) normalized
-  -- Debug.watch (" -> " ++ (printExpression normalized)) normalized
   normalized
 
 beta_normalization.betaNormalizeApplication : Expression -> Expression -> Expression
 beta_normalization.betaNormalizeApplication f a =  
---  match Debug.watch (" ** f:\n" ++ (printExpression f) ++ "\n\na:\n" ++ (printExpression a))  (betaNormalize f, a, betaNormalize a) with
-
   match (betaNormalize f, a, betaNormalize a) with
   (Builtin NaturalBuild, g, _) -> betaNormalize (
     Application
@@ -278,7 +273,7 @@ beta_normalization.betaNormalizeApplication f a =
               )
             )
           )
-          (EmptyList A0))
+          (EmptyList (Application (Builtin List) A0)))
   (Application
         (Application
             (Application
