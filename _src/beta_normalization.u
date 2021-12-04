@@ -161,14 +161,14 @@ beta_normalization.betaNormalize e =
     Merge t0 u0 T -> match (betaNormalize t0, betaNormalize u0) with
       (RecordLiteral xvs, Application (Field (UnionType _xTs₀) x) a) ->
         match lookup x xvs with
-          Optional.Some f -> Application f a        
+          Optional.Some f -> betaNormalize (Application f a)
       (RecordLiteral xvs, Field (UnionType _xTs₀) x) ->
         match lookup x xvs with
           Optional.Some v -> v
       (RecordLiteral xvs, Expression.Some a) ->
         match lookup "Some" xvs with
-          Optional.Some f -> Application f a        
-      (RecordLiteral xvs, Builtin _None) ->
+          Optional.Some f -> betaNormalize (Application f a)
+      (RecordLiteral xvs, Application (Builtin _None) _) ->
         match lookup "None" xvs with
           Optional.Some v -> v
       (t1, u1) -> Merge t1 u1 T
@@ -239,7 +239,7 @@ beta_normalization.betaNormalizeApplication f a =
   (Application (Builtin NaturalSubtract) a, _, NaturalLiteral n) -> match betaNormalize a with
     NaturalLiteral m | m <= n -> NaturalLiteral (n - m)
     NaturalLiteral m | n < m -> NaturalLiteral zero
-    NaturalLiteral zero -> NaturalLiteral n
+    NaturalLiteral m | m == zero -> NaturalLiteral n
     a1 -> if (n == zero) then NaturalLiteral zero else Application (Application (Builtin NaturalSubtract) a1) (NaturalLiteral n)
   (Application (Builtin NaturalSubtract) a, b, b') -> if equivalent a b then NaturalLiteral zero else Application (Application (Builtin NaturalSubtract) (betaNormalize a)) b'
   (Builtin TextShow, _, TextLiteral (Chunks [] s0)) -> Expression.TextLiteral (Chunks [] (escapeText s0))
@@ -373,94 +373,3 @@ beta_normalization.betaNormalizeProjectByLabels t xs = match (betaNormalize t, x
 
 beta_normalization.lookup : k -> [(k,v)] -> Optional v
 beta_normalization.lookup k l = Optional.map Tuple.at2 (List.find (t -> (Tuple.at1 t) === k) l)
-
--- use test
-
--- > Nonempty.foldLeft (cases (i, acc) -> el -> (i + one, acc List.:+ (i, el))) (zero, []) (Nonempty 1 [2,3])
--- test> betaNormalize.tests.ex1 = check (betaNormalize 
---   (Application
---     (Builtin NaturalBuild)
---     (Lambda
---       "natural"
---       (Constant Constant.Type)
---       (Lambda
---         "succ"
---         (Forall
---           "_"
---           (Variable "natural" (internal.Natural (Nonempty 0 [])))
---           (Variable "natural" (internal.Natural (Nonempty 0 []))))
---         (Lambda
---           "zero"
---           (Variable "natural" (internal.Natural (Nonempty 0 [])))
---           (Application
---             (Variable "succ" (internal.Natural (Nonempty 0 [])))
---             (Application
---               (Variable "succ" (internal.Natural (Nonempty 0 [])))
---               (Variable "zero" (internal.Natural (Nonempty 0 [])))))))))
---   ===
---     (NaturalLiteral (one + one)))
-
-> betaNormalize 
-  (Application
-    (Builtin NaturalBuild)
-    -- (Lambda
-    --   "natural"
-    --   (Constant Constant.Type)
-      (Lambda
-        "succ"
-        (Forall
-          "_"
-          (Variable "natural" zero)
-          (Variable "natural" zero))
-        (Lambda
-          "zero"
-          (Variable "natural" zero)
-          (Application
-            (Variable "succ" zero)
-            (Application
-              (Variable "succ" zero)
-              (Variable "zero" zero))))))
-
-
--- > betaNormalize 
---   (Application
---     (Builtin NaturalBuild)
---     -- (Lambda
---     --   "natural"
---     --   (Constant Constant.Type)
---       (Lambda
---         "succ"
---         (Forall
---           "_"
---           (Variable "natural" zero)
---           (Variable "natural" zero))
---         (Lambda
---           "zero"
---           (Variable "natural" zero)
---           (Application
---             (Variable "succ" zero)
---             (Variable "zero" zero))))
---           -- (Variable "zero" zero))
---           )
-
--- betaNormalizeApplication f a = match (betaNormalize f, a, betaNormalize a) with
---   (Builtin NaturalBuild, g, _) -> (betaNormalize (
---     Application
---         (Application g
---             (Lambda "x" (Builtin Natural)
---                 (Operator (Variable "x" zero) Plus (NaturalLiteral one))
---             )
---         )
---         (NaturalLiteral zero)
---     ))
---  λ zero : ( λ(x: Natural) -> x) -> zero
-    -- 409 | > betaNormalize 
-    --         ⧩
-    --         Lambda 
-    --           "zero" 
-    --           (Lambda
-    --             "x" (Builtin Builtin.Natural) x@0)
-    --           zero@0
-
--- >parseText expression "Natural/build (λ(natural : Type) → λ(succ : natural → natural) → λ(zero : natural) → succ (succ zero))"
--- > match (parseText expression "2 +  3") with (ReadResult _ (Right ex)) -> betaNormalize ex
