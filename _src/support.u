@@ -171,8 +171,8 @@ support.Integer.clamp = cases
 
 support.Integer.toDouble : Integer -> Float
 support.Integer.toDouble = cases
-  Integer false n -> naturalToFloat n
-  Integer true n -> -1.0 * naturalToFloat n
+  Integer false n -> Optional.getOrElse nan (Float.fromText (Natural.toDecimalText n))
+  Integer true n -> Optional.getOrElse nan (Float.fromText ("-" ++ Natural.toDecimalText n))
 
 support.Integer.toText : Integer -> Text
 support.Integer.toText = cases
