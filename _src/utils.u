@@ -1,6 +1,23 @@
 -- TODO
 utils.escapeText: Text -> Text
-utils.escapeText t = t
+utils.escapeText t =
+  escape : Char -> [Char]
+  escape = cases
+    ?$ -> [?\\, ?u, ?0, ?0, ?2, ?4]
+    ?" -> [?\\, ?"]
+    ?\b -> [?\\, ?b]
+    ?\f -> [?\\, ?f]
+    ?\n -> [?\\, ?n]
+    ?\r -> [?\\, ?r]
+    ?\t -> [?\\, ?t]
+    ?\\ -> [?\\, ?\\]
+    c ->
+      n = Char.toNat c
+      if n <= 32 then
+        hexEncoding = Natural.toHex (Natural.fromNat n)
+        Text.toCharList ((if n < 16 then "\\u000" else "\\u00") ++ hexEncoding)
+      else [c]
+  "\"" ++ Text.fromCharList (List.flatMap escape (Text.toCharList t)) ++ "\""
 
 utils.splitOn: Text -> Text -> [Text]
 utils.splitOn separator text = 
