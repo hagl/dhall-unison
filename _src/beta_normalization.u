@@ -114,7 +114,7 @@ beta_normalization.betaNormalize e =
         mr = Map.fromList xrs
         combine : Expression ->{} Expression ->{} Expression
         combine l r = Operator l CombineRecordTerms r
-        RecordLiteral (List.sortBy Tuple.at1 (Map.toList (Map.unionWith combine ml mr)))
+        betaNormalize(RecordLiteral (List.sortBy Tuple.at1 (Map.toList (Map.unionWith combine ml mr))))
       (ls1, rs1) -> Operator ls1 CombineRecordTerms rs1
     Operator ls0 Operator.Prefer rs0 -> match (betaNormalize ls0, betaNormalize rs0) with
       (RecordLiteral [], rs1) -> rs1
@@ -123,7 +123,7 @@ beta_normalization.betaNormalize e =
         ml = Map.fromList xls
         mr = Map.fromList xrs
         RecordLiteral (List.sortBy Tuple.at1 (Map.toList (Map.unionWith 'id ml mr)))
-      (ls1, rs1) -> Operator ls1 Prefer rs1
+      (ls1, rs1) -> if equivalent ls1 rs1 then ls1 else Operator ls1 Prefer rs1
     With e0 ks0 v0 -> match (ks0, betaNormalize e0) with
       (Nonempty k [], RecordLiteral kvs) ->
         RecordLiteral (Map.toList (Map.insert k (betaNormalize v0) (Map.fromList kvs)))
@@ -171,7 +171,7 @@ beta_normalization.betaNormalize e =
       (RecordLiteral xvs, Application (Builtin _None) _) ->
         match lookup "None" xvs with
           Optional.Some v -> v
-      (t1, u1) -> Merge t1 u1 T
+      (t1, u1) -> Merge t1 u1 (Optional.map betaNormalize T)
     IntegerLiteral n -> IntegerLiteral n
     DoubleLiteral n -> DoubleLiteral n
     Forall x A0 B0 -> Forall x (betaNormalize A0) (betaNormalize B0)
@@ -233,7 +233,6 @@ beta_normalization.betaNormalizeApplication f a =
 
   (Builtin NaturalEven, _, NaturalLiteral m) -> if mod m (one+one) === (Some zero) then Builtin True else Builtin False
   (Builtin NaturalOdd, _, NaturalLiteral m) -> if mod m (one+one) === (Some one) then Builtin True else Builtin False
-  -- TODO arbitrary precision integers
   (Builtin NaturalToInteger, _, NaturalLiteral m) -> IntegerLiteral (Integer.positive m)
   (Builtin NaturalShow, _, NaturalLiteral n) -> Expression.TextLiteral (Chunks [] (Natural.toDecimalText n))
   (Application (Builtin NaturalSubtract) a, _, NaturalLiteral n) -> match betaNormalize a with
@@ -241,7 +240,12 @@ beta_normalization.betaNormalizeApplication f a =
     NaturalLiteral m | n < m -> NaturalLiteral zero
     NaturalLiteral m | m == zero -> NaturalLiteral n
     a1 -> if (n == zero) then NaturalLiteral zero else Application (Application (Builtin NaturalSubtract) a1) (NaturalLiteral n)
-  (Application (Builtin NaturalSubtract) a, b, b') -> if equivalent a b then NaturalLiteral zero else Application (Application (Builtin NaturalSubtract) (betaNormalize a)) b'
+  (Application (Builtin NaturalSubtract) a, b, b') ->
+    if equivalent a b
+      then NaturalLiteral zero
+      else match (betaNormalize a) with
+        NaturalLiteral m | m == zero -> b'
+        a' -> Application (Application (Builtin NaturalSubtract) a') b'
   (Builtin TextShow, _, TextLiteral (Chunks [] s0)) -> Expression.TextLiteral (Chunks [] (escapeText s0))
   (Application
         (Application (Builtin TextReplace) (TextLiteral (Chunks [] "")))
@@ -300,8 +304,11 @@ beta_normalization.betaNormalizeApplication f a =
               (Application
                 (Application
                   (Application
-                    (Application (Builtin ListFold) A0)
-                      rest
+                    (Application
+                      (Application (Builtin ListFold) A0)
+                        rest
+                      )
+                      B
                     )
                     g
                   )
@@ -352,10 +359,10 @@ beta_normalization.betaNormalizeField t x =
     None -> betaNormalize (Field t1 x)
     Optional.Some v -> v
   Operator (RecordLiteral xvs) CombineRecordTerms t1 -> match lookup x xvs with
-    Optional.Some v -> Operator (RecordLiteral [(x, v)]) CombineRecordTerms t1
+    Optional.Some v -> Field (Operator (RecordLiteral [(x, v)]) CombineRecordTerms t1) x
     None -> betaNormalize (Field t1 x)
   Operator t1 CombineRecordTerms (RecordLiteral xvs) -> match lookup x xvs with
-    Optional.Some v -> Operator t1 CombineRecordTerms (RecordLiteral [(x, v)]) 
+    Optional.Some v -> Field (Operator t1 CombineRecordTerms (RecordLiteral [(x, v)])) x
     None -> betaNormalize (Field t1 x)
   _ ->  Field t1 x
 
@@ -367,7 +374,7 @@ beta_normalization.betaNormalizeProjectByLabels t xs = match (betaNormalize t, x
   (Operator l Prefer (RecordLiteral rs), _) ->
     ks = List.map Tuple.at1 rs
     pred x = x `elem` ks
-    Operator (ProjectByLabels l (xs `without` ks)) Prefer  (ProjectByLabels (RecordLiteral rs) (filter pred xs))
+    betaNormalize (Operator (ProjectByLabels l (xs `without` ks)) Prefer (ProjectByLabels (RecordLiteral rs) (filter pred xs)))
   (t1, _) -> ProjectByLabels t1 (List.sortBy id xs)
 
 

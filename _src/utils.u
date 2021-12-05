@@ -44,7 +44,7 @@ utils.printExpression = cases
     "let " ++ x ++ ot ++ " = " ++ (printExpression a0) ++ " in " ++ (printExpression b0)
   Variable x n -> if (Natural.isZero n) then x else x ++ "@" ++ (Natural.toDecimalText n)
   If t0 l0 r0 -> "if " ++ (printExpression t0) ++ " then " ++ (printExpression l0) ++ " else " ++ (printExpression r0)
-  Merge t0 u0 t -> "merge " ++ (printExpression t0) ++ (printExpression u0) ++ (Optional.getOrElse "" (Optional.map (e -> " : " ++ printExpression(e)) t))
+  Merge t0 u0 t -> "merge " ++ (printExpression t0) ++ " " ++ (printExpression u0) ++ (Optional.getOrElse "" (Optional.map (e -> " : " ++ printExpression(e)) t))
   ToMap t0 t -> "toMap " ++ (printExpression t0) ++ (Optional.getOrElse "" (Optional.map (e -> " : " ++ printExpression(e)) t))
   EmptyList T0 -> "[] : " ++ (printExpression T0)
   NonEmptyList ts0 -> "[" ++ (List.foldLeft (++) "" (List.intersperse ", " (List.map printExpression (Nonempty.toList ts0)))) ++ "]"
