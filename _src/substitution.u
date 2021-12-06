@@ -31,6 +31,9 @@ substitution.substitute e x' n e0 =
     DoubleLiteral d -> DoubleLiteral d
     NaturalLiteral n -> NaturalLiteral n
     IntegerLiteral n -> IntegerLiteral n
+    DateLiteral d -> DateLiteral d
+    TimeLiteral d -> TimeLiteral d
+    TimeZoneLiteral z -> TimeZoneLiteral z
     Expression.TextLiteral (Chunks xys0 z) -> Expression.TextLiteral (Chunks (List.map (cases (s, t0) -> (s, subst t0)) xys0) z)
     RecordType ks0 -> RecordType (List.map (cases (k, t_T0) -> (k, subst t_T0)) ks0)
     RecordLiteral ks0 -> RecordLiteral (List.map (cases (k, t_T0) -> (k, subst t_T0)) ks0)

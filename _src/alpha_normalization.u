@@ -45,7 +45,9 @@ alpha_normalization.alphaNormalize = cases
   Expression.Some a0 -> Expression.Some (alphaNormalize a0)
   Expression.Builtin b -> Expression.Builtin b
   Expression.Constant c -> Expression.Constant c
-
+  DateLiteral t -> DateLiteral t
+  TimeLiteral t -> TimeLiteral t
+  TimeZoneLiteral tz -> TimeZoneLiteral tz
 use test
 
 test> alpha_normalization.alphaNormalize.tests.ex1 = check(alphaNormalize(

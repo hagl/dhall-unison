@@ -30,6 +30,21 @@ parser.combinators.peek =
     { _ } -> (None, input)
   Parser.Parser parse
 
+parser.getLocation : Parser e t Location
+parser.getLocation = 
+  parse : '{Tokens e t} () ->{Throw (Error e t)} (Location, '{Tokens e t} ())
+  parse input = 
+      handle !input
+    with
+      cases
+        {Tokens.emit loc tok -> _} -> (loc, input)
+        { _ }                         -> (unknown, input)
+  Parser.Parser parse
+
+
+parser.combinators.failMessage : Text -> Parser e Char a
+parser.combinators.failMessage error = getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail error))))
+
 parser.tokens.eof: Parser e Char ()
 parser.tokens.eof = 
   parse : '{Tokens e Char} () ->{Throw (Error e Char)} ((), '{Tokens e t} ())
@@ -54,7 +69,8 @@ parser.tokens._forall = Parser.or (eq ?∀ $> '()) ((string "forall") $> '())
 
 parser.tokens.importAlt = eq ?? $> '()
 parser.tokens._or = string "||" $> '()
-parser.tokens.plus = eq ?+ $> '()
+parser.tokens.plus = char ?+
+parser.tokens.minus = char ?-
 parser.tokens.textAppend = string "++" $> '()
 parser.tokens.listAppend = eq ?# $> '()
 parser.tokens._and = string "&&" $> '()
@@ -208,26 +224,15 @@ parser.parseText : Parser Void Char r -> Text -> Either Text r
 parser.parseText parser text = 
   Either.mapLeft printError (Parser.run (parser <* eof) (Tokens.fromText text))
 
-parser.getLocation : Parser e t Location
-parser.getLocation = 
-  parse : '{Tokens e t} () ->{Throw (Error e t)} (Location, '{Tokens e t} ())
-  parse input = 
-      handle !input
-    with
-      cases
-        {Tokens.emit loc tok -> _} -> (loc, input)
-        { _ }                         -> (unknown, input)
-  Parser.Parser parse
-
 parser.exponent : Parser e Char Text
 parser.exponent = 
   (eq ?e)
-    +:> (Parser.optional((Parser.or (eq ?+) (eq ?-)) $> Char.toText) $> Optional.getOrElse "")
+    +:> (Parser.optional((Parser.or plus minus) $> Char.toText) $> Optional.getOrElse "")
     ++> (many digit $> Text.fromCharList)
     
 parser.numericDoubleLiteral : Parser e Char Text
 parser.numericDoubleLiteral = 
-  Parser.optional((Parser.or (eq ?+  $> (const "")) (eq ?- $> Char.toText))) $> Optional.getOrElse ""
+  Parser.optional((Parser.or (plus  $> (const "")) (minus $> Char.toText))) $> Optional.getOrElse ""
     ++> (many digit $> Text.fromCharList)
     ++> (or 
       ((eq ?.) +:> (many digit $> Text.fromCharList) 
@@ -284,8 +289,8 @@ test> parser.naturalLiteral.test.ex8= check (parseText parser.naturalLiteral "0"
 
 parser.integerLiteral : Parser e Char Integer
 parser.integerLiteral = (Parser.or 
-  ((eq ?-) *> naturalLiteral $> Integer.negative)
-  ((eq ?+) *> naturalLiteral $> Integer.positive) 
+  (minus *> naturalLiteral $> Integer.negative)
+  (plus *> naturalLiteral $> Integer.positive) 
   )
 
 test> parser.integerLiteral.test.ex1 = check (parseText parser.integerLiteral "-0x0" === Right (Integer.positive zero))
@@ -598,7 +603,8 @@ parser.alternative5 dExpression =
 
   primitiveExpression = 
     oneOf 
-      [ doubleLiteral $> DoubleLiteral
+      [ temporalLiteral
+      , doubleLiteral $> DoubleLiteral
       , naturalLiteral $> NaturalLiteral
       , integerLiteral $> IntegerLiteral
       , textLiteral
@@ -746,3 +752,81 @@ parser.util.printLocation = cases
   Location.Location fp (Line line) (Col col) -> (base.io.FilePath.toText fp) ++ ":(" ++ (Nat.toText line) ++ ", " ++ (Nat.toText col) ++ ")"
 
 parser.completeExpression =  (some shebang) *> whitespace *> rootExpression <* whitespace <* (optional lineCommentPrefix)
+
+parser.twoDigits = ascii.digit +:> (ascii.digit +:> Parser.const "")
+
+parser.validTwoDigits : Text -> Nat  -> Nat  -> Parser e Char Nat
+parser.validTwoDigits name min max = twoDigits >>= (s -> match Nat.fromText s with
+  Optional.Some n | (n >= min) && (n <= max) -> Parser.const n
+  _ -> failMessage (name ++ " '" ++ s ++ "' must be in the range " ++ (if min < 10 then "0" else "") ++ (Nat.toText min) ++ "-" ++ (Nat.toText max)))
+
+
+parser.dateMonth = validTwoDigits "month" 1 12
+parser.dateDay = validTwoDigits "day" 1 31
+parser.dateYear =  ascii.digit +:> (ascii.digit +:> (ascii.digit +:> (ascii.digit +:> Parser.const ""))) >>= (s -> match Nat.fromText s with
+  Optional.Some n -> Parser.const n
+  _ -> failMessage ("can't parse year" ++ s))
+
+parser.timeHour = validTwoDigits "hour" 0 23
+parser.timeMinutes = validTwoDigits "minutes" 0 59
+parser.timeSeconds = validTwoDigits "seconds" 0 59
+
+parser.timeSecfrac : Parser e Char Text
+parser.timeSecfrac = (eq ?.) *> (many digit $> Text.fromCharList)
+
+parser.checkDate : Nat -> Nat -> Nat -> Boolean
+parser.checkDate y m d = match m with
+  1 -> d <= 31
+  2 -> d <= (if (Nat.mod y 4 == 0) then 29 else 28) -- TODO
+  3 -> d <= 31
+  4 -> d <= 30
+  5 -> d <= 31
+  6 -> d <= 30
+  7 -> d <= 31
+  8 -> d <= 31
+  9 -> d <= 30
+  10 -> d <= 31
+  11 -> d <= 30
+  12 -> d <= 31
+
+
+parser.fullDate : Parser e Char Date
+parser.fullDate = dateYear ^ (minus *> dateMonth) ^ (minus *> dateDay) >>= (cases -- TODO check day with regards to month/year
+  ((y, m), d) | checkDate y m d -> Parser.const (Date y m d)
+  ((y, m), d) -> failMessage ("Invalid date " ++ (Nat.toText y) ++ "-" ++(Nat.toText m) ++ "-" ++(Nat.toText d)))
+
+parser.partialTime : Parser e Char Time
+parser.partialTime = timeHour ^ (colon *> timeMinutes) ^ (colon *> timeSeconds) ^ (optional timeSecfrac) >>= cases
+  (((h, m), s), None) -> Parser.const (Time h m s 0)
+  (((h, m), s), Optional.Some frac) -> match (Nat.fromText ((Nat.toText s) ++ frac)) with
+    Optional.Some n -> Parser.const (Time h m n (Text.size frac))
+    None -> failMessage ("cannot parse fractional part '" ++ frac ++ "'")
+
+> parseText timeHour "03"
+> parseText timeHour "33"
+
+parser.timeNumoffset : Parser e Char TimeZone
+parser.timeNumoffset = (or plus minus) ^ timeHour ^ (colon *> timeMinutes) $> cases
+  ((?+,  h), m) -> TimeZone (Nat.toInt (h * 60 + m))
+  ((?-,  h), m) -> TimeZone (-1 * (Nat.toInt (h * 60 + m)))
+
+
+parser.timeOffset : Parser e Char TimeZone
+parser.timeOffset = oneOf [
+  timeNumoffset,
+  char ?Z $> '(TimeZone +0)
+  ]
+
+
+> parseText timeNumoffset "-12:93  "
+
+parser.temporalLiteral : Parser e Char Expression
+parser.temporalLiteral = oneOf [
+  fullDate ^ ((or (char ?t) (char ?T)) *> partialTime) ^  timeOffset $> cases ((date, time), timeZone) -> RecordLiteral [("date", DateLiteral date), ("time", TimeLiteral time), ("timeZone", TimeZoneLiteral timeZone)],
+  fullDate ^ ((or (char ?t) (char ?T)) *> partialTime) $> cases (date, time) -> RecordLiteral [("date", DateLiteral date), ("time", TimeLiteral time)],
+  partialTime ^ timeOffset $> cases (time, timeZone) -> RecordLiteral [("time", TimeLiteral time), ("timeZone", TimeZoneLiteral timeZone)],
+  fullDate $> DateLiteral,
+  partialTime $> TimeLiteral,
+  timeNumoffset $> TimeZoneLiteral
+]
+

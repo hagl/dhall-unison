@@ -1,3 +1,5 @@
+use .dhall.trunk.support
+
 unique type syntax.Expression = 
    -- | > x@n
   Variable Text Natural
@@ -47,12 +49,9 @@ unique type syntax.Expression =
   | -- | > "s"
     --   > "s${t}ss…"
     TextLiteral syntax.TextLiteral
-  -- | DateLiteral Time.Day
-  -- | -- | Precision
-    -- TimeLiteral
-      -- Time.TimeOfDay
-      -- Int
-  -- | TimeZoneLiteral Time.TimeZone
+  | DateLiteral Date
+  | TimeLiteral Time
+  | TimeZoneLiteral TimeZone
   | -- | > {}
     --   > { k : T, ks… }
     RecordType [(Text, syntax.Expression)]

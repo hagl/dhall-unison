@@ -3,6 +3,11 @@ use .dhall.trunk.syntax.TextLiteral
 
 use Natural 
 
+equivalence.equivalent : Expression -> Expression -> Boolean
+equivalence.equivalent e1 e2 = 
+  encodeNormalized e = e |> betaNormalize |> alphaNormalize |> encode |> Term.toBytes
+  encodeNormalized e1 === encodeNormalized e2
+
 beta_normalization.without: [a] -> [a] -> [a]
 beta_normalization.without l r = List.filter (x -> not(x `elem` r)) l
 
@@ -174,6 +179,9 @@ beta_normalization.betaNormalize e =
       (t1, u1) -> Merge t1 u1 (Optional.map betaNormalize T)
     IntegerLiteral n -> IntegerLiteral n
     DoubleLiteral n -> DoubleLiteral n
+    DateLiteral d -> DateLiteral d
+    TimeLiteral t -> TimeLiteral t
+    TimeZoneLiteral z -> TimeZoneLiteral z
     Forall x A0 B0 -> Forall x (betaNormalize A0) (betaNormalize B0)
     Lambda x A0 b0 -> Lambda x (betaNormalize A0) (betaNormalize b0)
     Let x _ a0 b0 -> 

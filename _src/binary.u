@@ -1,3 +1,4 @@
+use .trunk.support
 use .trunk.syntax 
 use .trunk.syntax.Constant
 use .support.Integer Integer
@@ -55,9 +56,9 @@ binary.encodeBuiltin = cases
   Double -> "Double"
   Text -> "Text"
   List -> "List"
-  Date -> "Date"
-  Time -> "Time"
-  TimeZone -> "TimeZone"
+  Builtin.Date -> "Date"
+  Builtin.Time -> "Time"
+  Builtin.TimeZone -> "TimeZone"
 
 binary.encodeConstant : Constant -> Text
 binary.encodeConstant = cases
@@ -148,10 +149,13 @@ binary.encode expression =
     Annotation t0 T0 -> TList [ TPosInt 26, encode t0, encode T0]
     With e0 ks v0 -> TList [ TPosInt 29, encode e0, TList (List.map TString (Nonempty.toList ks)), encode v0]
     Completion T0 r0 -> TList [TPosInt 3, TPosInt 13, encode T0, encode r0]
-    -- --DateLiteral d -> DateLiteral d
-    -- --TimeLiteral d -> TimeLiteral d
-    -- --TimeZoneLiteral z -> TimeZoneLiteral z
-
+    DateLiteral (Date.Date y m d) -> TList [TPosInt 30, TPosInt y, TPosInt m, TPosInt d]
+    TimeLiteral (Time.Time h m s p) ->
+      TList [TPosInt 31, TPosInt h, TPosInt m, TTagged 4 (TList [if p == 0 then TPosInt 0 else TNegInt (Nat.decrement p), TPosInt s])]
+    TimeZoneLiteral (TimeZone.TimeZone minutes) -> 
+      positive = minutes Int.>= +0
+      absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
+      TList [TPosInt 32, TBool positive, TPosInt (absMin / 60), TPosInt (Nat.mod absMin 60)]
 
 binary.Term.toBytes: Term -> Bytes
 binary.Term.toBytes = cases
