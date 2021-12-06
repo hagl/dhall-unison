@@ -105,7 +105,8 @@ The [Dhall Acceptance Tests][dhall-tests] of the sections
 * parser tests
 * normalization tests
 * alpha-normalization tests
-can be run with the the from ucm with the command
+  
+can be run with the the from `ucm` with the command
 
 ```ucm
 run .external.dhall.trunk.testsuite.runTestSuite <path to local copy of github.com/dhall-lang/dhall-lang>
