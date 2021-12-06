@@ -15,7 +15,7 @@ To install the latest version in your Unison codebase use the following ucm comm
 pull https://github.com/hagl/dhall-unison:.dhall.trunk .external.dhall.trunk
 ```
 
-If you are intersted in the sources you will also need `stew.parser`:
+If you are interested in the sources you will also need `stew.parser`:
 ```
 .> pull git@github.com:stew/codebase:.parser.trunk
 ```
@@ -23,7 +23,21 @@ together with this patch https://github.com/stew/codebase/issues/6
 
 ## Usage
 
-`external.dhall.trunk.Dhall.evaluate : Text -> Either Text DhallValue` will evaluate a Dhall program into a DhallValue or an error message. 
+The `evaluate` function executes a Dhall program and returns either an error or a value of type `DhallValue`
+
+```
+external.dhall.trunk.Dhall.evaluate : Text -> Either Text DhallValue
+
+unique type DhallValue
+  = DhallInteger Integer
+  | DhallNatural Natural
+  | DhallFloat Float
+  | DhallList [DhallValue]
+  | DhallBoolean Boolean
+  | DhallText Text
+  | DhallRecord (Map Text DhallValue)
+  | DhallOptional (Optional DhallValue)
+```
 
 ### Example
 
@@ -51,9 +65,8 @@ let configs : List Config =
 in  configs
 ```
 
-Assume we want to use this Dhall configuration to obtain a list of UserConfig
+Assume we want to use above Dhall programm to generate a list of Unison UserConfig values
 ```unison
---  type for the user configuration data
 unique type UserConfig = UserConfig Text Text Text
 ```
 
@@ -71,7 +84,7 @@ convertConfigs = cases
 -- evaluate and convert input in a watch expression
 > evaluate input |> Either.mapRight convertConfigs
 ```
-This will give the following output
+The watch expression will give the following output in `ucm`
 ```ucm
 > evaluate input |> Either.mapRight convertConfigs
 ⧩
@@ -111,7 +124,7 @@ The following features are not yet supported
 
 ### Future directions
 
-Once Unison has some reflection/meta-programming possibilties it should be possible to
+Once Unison has some reflection/meta-programming possibilities it should be possible to
 * generate a Dhall type for a Unison type (giving type checking & editor support for config files)
 * automatically convert a Dhall value into a Unison value when their types are compatible
 
