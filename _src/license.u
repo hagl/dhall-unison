@@ -1,0 +1,2 @@
+-- create author hagl "Harald Gliebe"
+metadata.licenses.hagl_bsd3_2021 = License [copyrightHolders.hagl] [Year 2021] licenseTypes.bsd3
