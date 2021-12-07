@@ -139,4 +139,3 @@ testsuite.runTestSuite _ =
     None -> printLine "Usage: run runTestSuite <path to local copy of https://github.com/dhall-lang/dhall-lang>"
     Some path -> runTests path |> '()
 
-> createUser

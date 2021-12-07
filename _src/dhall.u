@@ -1,5 +1,5 @@
 unique type DhallValue = 
-  DhallList [DhallValue]
+    DhallList [DhallValue]
   | DhallBoolean Boolean
   | DhallFloat Float
   | DhallNatural Natural
@@ -63,7 +63,8 @@ evaluate input =
     Left error -> Left error
 
 > evaluate example1.input
-  |> cases Right x -> convertConfigs x
+
+> evaluate input |> Either.mapRight convertConfigs
 
 README.example1.input = Text.join "\n" [
   , "  let Config : Type =                                             "

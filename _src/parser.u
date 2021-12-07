@@ -1,5 +1,12 @@
-use .prs.parser.token_pr Parser ErrorFancy
-use .prs.parser.token_pr.Parser <* string
+use .external.stew.parser Parser ErrorFancy
+use .external.stew.parser.Parser <*
+use parser.util string
+
+parser.util.string : Text -> Parser e Char Text
+parser.util.string t =
+  x : Parser e Char [Char]
+  x = util.tokens (a b -> a === b) (toCharList t)
+  x $> fromCharList
 
 (parser.combinators.>>=) : Parser e t a -> (a -> Parser e t b) -> Parser e t b
 (parser.combinators.>>=) x y = Parser.flatMap y x
@@ -173,7 +180,7 @@ parser.whitespaceChunk =
   predicate c = if c == ?\s || (c == ?\t) || (c == ?\n) then Some () else None
   Parser.label (oneOf 
     [ many (Tokens.token predicate) $> '()
-    , Parser.label (.prs.parser.token_pr.Parser.string "\r\n") "newline" $> '()
+    , Parser.label (string "\r\n") "newline" $> '()
     , lineComment $> '()
     , blockComment $> '()
     ] $> '()) "whitespace"
@@ -540,7 +547,7 @@ parser.alternative5 dExpression =
   builtinExpression : Parser e Char Expression
   builtinExpression =
     peek >>= cases 
-      Optional.Some ?N -> .prs.parser.token_pr.Parser.oneOf [
+      Optional.Some ?N -> Parser.oneOf [
           , (builtin "Natural/fold") >>= '(Parser.const (Expression.Builtin NaturalFold))
           , (builtin "Natural/build") >>= '(Parser.const (Expression.Builtin NaturalBuild))
           , (builtin "Natural/isZero") >>= '(Parser.const (Expression.Builtin NaturalIsZero))
@@ -802,9 +809,6 @@ parser.partialTime = timeHour ^ (colon *> timeMinutes) ^ (colon *> timeSeconds) 
     Optional.Some n -> Parser.const (Time h m n (Text.size frac))
     None -> failMessage ("cannot parse fractional part '" ++ frac ++ "'")
 
-> parseText timeHour "03"
-> parseText timeHour "33"
-
 parser.timeNumoffset : Parser e Char TimeZone
 parser.timeNumoffset = (or plus minus) ^ timeHour ^ (colon *> timeMinutes) $> cases
   ((?+,  h), m) -> TimeZone (Nat.toInt (h * 60 + m))
@@ -816,9 +820,6 @@ parser.timeOffset = oneOf [
   timeNumoffset,
   char ?Z $> '(TimeZone +0)
   ]
-
-
-> parseText timeNumoffset "-12:93  "
 
 parser.temporalLiteral : Parser e Char Expression
 parser.temporalLiteral = oneOf [
