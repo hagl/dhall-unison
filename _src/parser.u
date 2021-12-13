@@ -428,7 +428,7 @@ parser.alternative2 dExpression =
 
 parser.alternative3 : Parser e Char Expression -> (Parser e Char Expression)
 parser.alternative3 dExpression = 
-  (_forall *> whitespace *> openParen *> nonreservedLabel <* whitespace) ^
+  (_forall *> whitespace *> openParen *>  whitespace *> nonreservedLabel <* whitespace) ^
   (string ":" *> nonemptyWhitespace *> dExpression <* whitespace <* closeParen <* whitespace) ^
   (arrow *> whitespace *> dExpression) $> cases
     ((a, b), c) -> Forall a b c
