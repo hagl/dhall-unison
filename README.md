@@ -8,18 +8,17 @@ A [Unison][unison] implementation of the [Dhall configuration language][dhall-la
 * [Usage](#usage)
 * [Copyright and license](#copyright-and-license)
 
-## Installation 
+## Installation
 
 To install the latest version in your Unison codebase use the following ucm command:
 ```
-pull https://github.com/hagl/dhall-unison:.dhall.trunk .external.dhall.trunk
+pull https://github.com/hagl/dhall-unison:.dhall.releases._v2 .external.dhall.v2
 ```
 
 If you are interested in the sources you will also need `stew.parser`:
 ```
 .> pull git@github.com:stew/codebase:.parser.trunk
 ```
-together with this patch https://github.com/stew/codebase/issues/6
 
 ## Usage
 
@@ -97,15 +96,16 @@ Right
 
 This example is also available in the Unison doc `external.dhall.trunk.README`.
 
-## Status 
+## Status
 
 This project is currently in development and doesn't have any releases yet.
 
-The [Dhall Acceptance Tests][dhall-tests] of the sections 
+The [Dhall Acceptance Tests][dhall-tests] of the sections
 * parser tests
 * normalization tests
 * alpha-normalization tests
-  
+* type-inference tests
+
 can be run with the the from `ucm` with the command
 
 ```ucm
@@ -113,13 +113,12 @@ run .external.dhall.trunk.testsuite.runTestSuite <path to local copy of github.c
 ```
 At the time of this writing this will give the following results
 ```
-658 total tests ( ✅ 604 passed, 🚫 54 failed )
+1132 total tests ( ✅ 938 passed, 🚫 194 failed)
 ```
 
-### Limitations 
+### Limitations
 
 The following features are not yet supported
-* type-checking
 * importing of external files
 * date & time types are not exposed in the resolved DhallValue, since there are no matching type in the Unsion standard library
 
@@ -139,7 +138,7 @@ This project is based on and uses code from the projects
 - [dhall-lang][dhall-lang-project] ([3-Clause BSD License][dhall-lang-license])
 - [dhall-haskell][dhall-haskell] ([3-Clause BSD License][dhall-lang-license])
 - [stew/parser][stew-parser]
-  
+
 [license]: https://github.com/hagl/dhall-unison/blob/main/LICENSE
 [unison]: https://www.unisonweb.org/
 [dhall-lang]: https://dhall-lang.org/
@@ -148,5 +147,5 @@ This project is based on and uses code from the projects
 [dhall-haskell]: https://github.com/dhall-lang/dhall-haskell
 [dhall-haskell-license]: https://github.com/dhall-lang/dhall-haskell/blob/main/LICENSE
 [dhall-tests]: https://github.com/dhall-lang/dhall-lang/tree/master/tests
-[stew-parser]: [https://share.unison-lang.org/latest/namespaces/stew/parser]
-[hagl]: [https://twitter.com/hagl]
+[stew-parser]: https://share.unison-lang.org/latest/namespaces/stew/parser
+[hagl]: https://twitter.com/hagl

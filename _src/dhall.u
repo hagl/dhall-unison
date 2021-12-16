@@ -1,4 +1,4 @@
-unique type DhallValue = 
+unique type DhallValue =
     DhallList [DhallValue]
   | DhallBoolean Boolean
   | DhallFloat Float
@@ -9,11 +9,11 @@ unique type DhallValue =
   | DhallOptional (Optional DhallValue)
 
 DhallValue.fromExpression : Expression -> Either Text DhallValue
-DhallValue.fromExpression expr = 
+DhallValue.fromExpression expr =
   go : Expression -> Text -> Either Text DhallValue
   go expression path =
     fail : Text -> Either Text DhallValue
-    fail t = Left ("Expression is not fully evaluated, contains an expression of type " ++ t ++ " at path " ++ path)
+    fail t = Left ("Expression is not fully evaluated " ++ (if path == "" then "(" ++ t ++ ")" else "it contains an " ++ t ++ " expression at path '" ++ path ++ "'"))
     match expression with
       Variable _ _ -> fail "Variable"
       Lambda _ _ _ -> fail "Lambda"
@@ -41,7 +41,7 @@ DhallValue.fromExpression expr =
       Expression.TextLiteral (Chunks [] z) -> Right (DhallText z)
       Expression.TextLiteral _ -> fail "Text with nested expressions"
       RecordType ks0 -> fail "RecordType"
-      RecordLiteral ks0 -> match List.partitionEithers (List.map (cases (k, t) -> (Either.mapRight (x -> (k,x)) (go t (path ++ "." ++ k)))) ks0) with
+      RecordLiteral ks0 -> match List.partitionEithers (List.map (cases (k, t) -> (Either.mapRight (x -> (k,x)) (go t (if path == "" then k else path ++ "." ++ k)))) ks0) with
         ([], rights) -> Right (DhallRecord (Map.fromList rights))
         (h +: _, _) -> Left h
       UnionType ks0 -> fail "UnionType"
@@ -55,14 +55,16 @@ DhallValue.fromExpression expr =
 
 {{ run a Dhall programm}}
 evaluate : Text -> Either Text DhallValue
-evaluate input = 
-  parsedExpression = parseText completeExpression input
-  normalizedExpression = Either.mapRight betaNormalize parsedExpression
-  match normalizedExpression with 
-    Right expr -> DhallValue.fromExpression expr
+evaluate input =
+  match parseText completeExpression input with
     Left error -> Left error
+    Right parsedExpression ->
+      match type_inference.typeCheck Context.empty parsedExpression with
+          Left error -> Left ("Type error: " ++ error)
+          Right typedExpression -> DhallValue.fromExpression (betaNormalize  parsedExpression)
 
 > evaluate example1.input
+> evaluate "[3, { y = \\(x: Natural) -> x }]"
 
 > evaluate input |> Either.mapRight convertConfigs
 
@@ -91,26 +93,26 @@ README.example1.input = Text.join "\n" [
 unique type README.example1.UserConfig = UserConfig Text Text Text
 
 README.example1.convertConfigs : DhallValue -> List UserConfig
-README.example1.convertConfigs = cases 
-  DhallList list -> list |> List.map (cases DhallRecord map -> 
+README.example1.convertConfigs = cases
+  DhallList list -> list |> List.map (cases DhallRecord map ->
           getString key = Map.get key map |> cases (Optional.Some (DhallText text)) -> text
           UserConfig (getString "home") (getString "publicKey") (getString "privateKey"))
 
 README : Doc
-README = 
+README =
   {{
   # dhall-unison
-  
+
   [dhall-unison](https://github.com/hagl/dhall-unison) is an implementation of the [Dhall configuration language](https://dhall-lang.org/) in Unison.
 
   ## Status
-  
-  This library is currently under development and will have incompatible changes in the future. 
+
+  This library is currently under development and will have incompatible changes in the future.
 
   ## Example
 
-  Let's look at the function example from the dhall homepage: 
-  
+  Let's look at the function example from the dhall homepage:
+
   ```dhall
   let Config : Type =
       { home : Text
@@ -134,7 +136,7 @@ README =
 
   ```
 
-  This dhall expression would usually be read from a file, as a Unison text literal it requires some escaping of quotes and backslashes: 
+  This dhall expression would usually be read from a file, as a Unison text literal it requires some escaping of quotes and backslashes:
 
   @source{example1.input}
 
@@ -144,7 +146,7 @@ README =
     evaluate example1.input
   ```
 
-  Once there is some possibility for reflection/meta-programming in Unison, 
+  Once there is some possibility for reflection/meta-programming in Unison,
   it should be easy to convert a dhall expression into a Unison value and vice versa to create a Dhall type for a Unison type.
   For now the result of the evaluation can be converted manually into the desired form by pattern matching on {type DhallValue}, e.g.
 
@@ -152,14 +154,14 @@ README =
 
   ```
     evaluate input |> Either.mapRight convertConfigs
-  ```  
+  ```
 
-  While a dhall expression can be a type or a function that can be used in other expressions, the {evaluate} function will only succeed (i.e. produce a  {Right DhallValue}) 
-  when the dhall expression can be fully evaluated to a literal value. 
+  While a dhall expression can be a type or a function that can be used in other expressions, the {evaluate} function will only succeed (i.e. produce a  {Right DhallValue})
+  when the dhall expression can be fully evaluated to a literal value.
 
   ```
   evaluate "λ(x: Nat) → x + 1"
   ```
-  
+
   }}
 
