@@ -1,4 +1,8 @@
--- TODO
+use syntax
+use syntax.TextLiteral
+use syntax.Constant
+use syntax Expression
+
 utils.escapeText: Text -> Text
 utils.escapeText t =
   escape : Char -> [Char]
@@ -20,11 +24,11 @@ utils.escapeText t =
   "\"" ++ Text.fromCharList (List.flatMap escape (Text.toCharList t)) ++ "\""
 
 utils.splitOn: Text -> Text -> [Text]
-utils.splitOn separator text = 
+utils.splitOn separator text =
   sep = Text.toCharList separator
   t = Text.toCharList text
   go : [Char] -> [Char] -> [[Char]] -> [[Char]]
-  go l cur acc = match l with 
+  go l cur acc = match l with
     [] -> acc :+ cur
     (h +: t) -> match List.stripPrefix sep l with
       None -> go t (cur :+ h) acc
@@ -34,11 +38,11 @@ utils.splitOn separator text =
 use Text
 
 utils.printExpression: Expression -> Text
-utils.printExpression = cases 
+utils.printExpression = cases
   Lambda x A0 b0 -> "λ(" ++ x ++ ": " ++ (printExpression A0) ++ ") -> " ++ printExpression b0
   Forall x A0 B0 -> "∀(" ++ x ++ ": " ++ (printExpression A0) ++ ") -> " ++ printExpression B0
-  Let x t a0 b0 -> 
-    ot = match t with 
+  Let x t a0 b0 ->
+    ot = match t with
       Optional.Some T -> " : " ++ (printExpression T)
       None -> ""
     "let " ++ x ++ ot ++ " = " ++ (printExpression a0) ++ " in " ++ (printExpression b0)
@@ -62,18 +66,24 @@ utils.printExpression = cases
   IntegerLiteral n -> Integer.toText n
   Expression.TextLiteral (Chunks xys0 z) -> (List.foldLeft (++) "" (List.intersperse ", " (List.map (cases (t, ex) -> t ++ "{" ++ (printExpression ex) ++ "}") xys0))) ++ z
   RecordType ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ ": " ++ (printExpression e)) ks0)) ++ "}"
-  RecordLiteral ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ " = " ++ (printExpression e)) ks0)) ++ "}"  
-  UnionType ks0 -> 
-    unionElements = List.map (cases 
+  RecordLiteral ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ " = " ++ (printExpression e)) ks0)) ++ "}"
+  UnionType ks0 ->
+    unionElements = List.map (cases
     (k, None) -> k
     (k, Optional.Some ex) -> k ++ ": " ++ (printExpression ex)) ks0
     "<" ++ (Text.join " | " unionElements)++ ">"
   Expression.Some a0 -> "Some " ++ (printExpression a0)
   Expression.Builtin b -> printBuiltin b
   Expression.Constant c -> printConstant c
+  DateLiteral (Date.Date y m d) -> (Nat.toText y) ++ "-" ++ (Nat.toText m) ++ "-" ++ (Nat.toText d)
+  TimeLiteral (Time.Time h m s p) -> (Nat.toText h) ++ ":" ++ (Nat.toText m) ++ ":" ++ (Nat.toText (s / (pow 10  p)))
+  TimeZoneLiteral (TimeZone.TimeZone minutes) ->
+      positive = minutes Int.>= +0
+      absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
+      (if positive then "+" else "-") ++ (Nat.toText (absMin / 60)) ++ ":" ++ (Nat.toText (Nat.mod absMin 60))
 
-utils.printConstant : Constant -> Text  
-utils.printConstant = cases 
+utils.printConstant : Constant -> Text
+utils.printConstant = cases
   Constant.Type -> "Type"
   Constant.Kind -> "Kind"
   Constant.Sort -> "Sort"
@@ -117,7 +127,7 @@ utils.printBuiltin = cases
   Builtin.TimeZone -> "TimeZone"
 
 utils.printOperator : Operator -> Text
-utils.printOperator = cases 
+utils.printOperator = cases
     Operator.Or -> "||"
     Operator.Plus -> "+"
     Operator.TextAppend -> "++"

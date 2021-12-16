@@ -1,9 +1,12 @@
-use .trunk.support
-use .trunk.syntax 
-use .trunk.syntax.Constant
-use .support.Integer Integer
-
-use .dhall.trunk.support encodeFloat
+use support
+use syntax
+use syntax.Builtin
+use syntax.Constant
+use syntax.Operator
+use syntax.Expression
+use syntax.TextLiteral
+use support.Integer Integer
+use support encodeFloat
 
 use base.Natural <=
 use Optional Some
@@ -86,7 +89,7 @@ binary.encodeOperator = cases
 binary.encode : Expression ->{} Term
 binary.encode expression =
   sortByFirst : [(a, b)] -> [(a, b)]
-  sortByFirst = List.sortBy Tuple.at1 
+  sortByFirst = List.sortBy Tuple.at1
   match expression with
     Variable "_" n -> match Natural.toNat n with
       Some m -> TPosInt m
@@ -98,9 +101,9 @@ binary.encode expression =
     Expression.Builtin Builtin.False -> TBool false
     Expression.Builtin b -> TString (encodeBuiltin b)
     Expression.Constant c -> TString (encodeConstant c)
-    expression@(Application _ _) -> 
+    expression@(Application _ _) ->
       loop : [Term] -> Expression -> Term
-      loop arguments = cases  
+      loop arguments = cases
         Application f a0 -> loop ((encode a0) +: arguments) f
         f0 -> TList ([TPosInt 0, encode f0] ++ arguments)
       loop [] expression
@@ -130,7 +133,7 @@ binary.encode expression =
     IntegerLiteral (Integer false natural) -> match Natural.toNat natural with
       Some nat -> TList [TPosInt 16, TPosInt nat]
       None -> TList [TPosInt 16, TPosInteger natural]
-    IntegerLiteral (Integer true natural) -> 
+    IntegerLiteral (Integer true natural) ->
       natural1 = natural Natural.- one
       match Natural.toNat natural1 with
         Some nat -> TList [TPosInt 16, TNegInt nat]
@@ -152,7 +155,7 @@ binary.encode expression =
     DateLiteral (Date.Date y m d) -> TList [TPosInt 30, TPosInt y, TPosInt m, TPosInt d]
     TimeLiteral (Time.Time h m s p) ->
       TList [TPosInt 31, TPosInt h, TPosInt m, TTagged 4 (TList [if p == 0 then TPosInt 0 else TNegInt (Nat.decrement p), TPosInt s])]
-    TimeZoneLiteral (TimeZone.TimeZone minutes) -> 
+    TimeZoneLiteral (TimeZone.TimeZone minutes) ->
       positive = minutes Int.>= +0
       absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
       TList [TPosInt 32, TBool positive, TPosInt (absMin / 60), TPosInt (Nat.mod absMin 60)]
@@ -169,10 +172,10 @@ binary.Term.toBytes = cases
     (majorTypeIntArg 3 (Bytes.size bytes)) Bytes.++ bytes
   TList  terms ->
     List.foldLeft (b -> t -> b Bytes.++ (Term.toBytes t)) (majorTypeIntArg 4 (List.size terms)) terms
-  TMap  tuples -> 
+  TMap  tuples ->
     List.foldLeft (b -> cases (k, v) -> b Bytes.++ (Term.toBytes k) Bytes.++ (Term.toBytes v)) (majorTypeIntArg 5 (List.size tuples)) tuples
   TTagged tag term ->  (majorTypeIntArg 6 tag) Bytes.++ (Term.toBytes term)
-  TBool bool -> (majorTypeIntArg 7 (if bool then 21 else 20)) 
+  TBool bool -> (majorTypeIntArg 7 (if bool then 21 else 20))
   TNull -> majorTypeIntArg 7 22
   TSimple n | n <= 0xFF -> majorTypeIntArg 7 n
   TFloat bytes -> match Bytes.size bytes with

@@ -1,8 +1,9 @@
-use .dhall.trunk.syntax 
-use .dhall.trunk.binary 
-use .dhall.trunk.binary Term 
-use .dhall.trunk.syntax.Constant
-use .dhall.support.Integer Integer
+use syntax
+use binary
+use binary Term
+use syntax.Constant
+use support.Integer Integer
+use utils
 
 use base.Natural <=
 use Optional Some
@@ -21,7 +22,7 @@ testsuite.runTestsRecursive : Text -> Text-> (Text -> Text -> Boolean) -> (Nat, 
 testsuite.runTestsRecursive testDirectory testSuffix testRunner =
   removeSuffix : Text -> Text -> Optional Text
   removeSuffix suffix text =
-    if size suffix > size text then None 
+    if size suffix > size text then None
       else
         d = Int.truncate0 (size text - (size suffix))
         if drop d text == suffix then Some (take d text) else None
@@ -30,11 +31,11 @@ testsuite.runTestsRecursive testDirectory testSuffix testRunner =
   fp = FilePath.FilePath testDirectory
   contents = io.directoryContents fp
   tests = filterMap (removeSuffix testSuffix) contents
-  isSubfolder f = 
+  isSubfolder f =
     path = testDirectory ++ "/" ++ f
     if io.isDirectory (FilePath.FilePath path) && (f != ".") && (f != "..") then Some(path) else None
   subdirs = filterMap isSubfolder contents
-  test t = 
+  test t =
     result = testRunner testDirectory t
     printLine ((if result then "✅" else "🚫")++ " " ++ t)
     if (result) then (1, 0) else (0, 1)
@@ -44,15 +45,15 @@ testsuite.runTestsRecursive testDirectory testSuffix testRunner =
   result
 
 testsuite.parseTestcase : FilePath -> Either Text Expression
-testsuite.parseTestcase inputPath =  
+testsuite.parseTestcase inputPath =
   input = io.openFile inputPath FileMode.Read
-  inputBytes = getBytes input (base.io.getFileSize inputPath) 
+  inputBytes = getBytes input (base.io.getFileSize inputPath)
   inputText = Text.fromUtf8 inputBytes
   io.closeFile input
-  parseText completeExpression inputText
+  parseText parser.completeExpression inputText
 
 testsuite.encodeExpression : Expression -> Bytes
-testsuite.encodeExpression expression = 
+testsuite.encodeExpression expression =
   encoded = encode expression
   Term.toBytes encoded
 
@@ -63,7 +64,7 @@ testsuite.parseSuccessTest testDir name =
   bytes = Optional.map encodeExpression (Either.right (parseTestcase testPath))
   checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhallb")
   check = io.openFile checkPath FileMode.Read
-  checkBytes = getBytes check (base.io.getFileSize checkPath) 
+  checkBytes = getBytes check (base.io.getFileSize checkPath)
   io.closeFile check
   success = bytes === Some checkBytes
   success
@@ -73,17 +74,17 @@ testsuite.parseFailureTest testDir name =
   use Text
   inputPath = FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")
   input = io.openFile inputPath FileMode.Read
-  inputBytes = getBytes input (base.io.getFileSize inputPath) 
+  inputBytes = getBytes input (base.io.getFileSize inputPath)
   io.closeFile input
   match catch '(
-    match parseText completeExpression (Text.fromUtf8 inputBytes) with
+    match parseText parser.completeExpression (Text.fromUtf8 inputBytes) with
       Right exp -> false
       _ -> true
-  ) with 
-    Left (Failure _ t _ ) -> 
+  ) with
+    Left (Failure _ t _ ) ->
       printLine("Exception: " ++ t)
       true
-    Right result -> result 
+    Right result -> result
 
 testsuite.alphaNormalizationTest : Text -> Text -> Boolean
 testsuite.alphaNormalizationTest testDir name =
@@ -121,19 +122,101 @@ testsuite.normalizationTest testDir name =
     printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
     false
 
+testsuite.typeInferenceTest : Text -> Text -> Boolean
+testsuite.typeInferenceTest testDir name =
+  use Text
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")
+  use type_inference
+  use .dhall.trunk.utils
+  print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
 
-testsuite.runTests path = 
+  parsedOpt = Either.right (parseTestcase testPath)
+  inferredType = match parsedOpt with
+    None -> None
+    Optional.Some parsed ->
+      match typeCheck Context.empty parsed with
+        Left msg -> Debug.watch ("Typecheck error : " ++ msg) None
+        Right inferred -> Optional.Some inferred
+
+  match inferredType with
+    None -> false
+    Some _ ->
+      bytes = Optional.map encodeExpression inferredType
+      checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")
+      checkBytes = Optional.map encodeExpression (Either.right (parseTestcase checkPath))
+      result = bytes === checkBytes
+      if (result) then true
+      else
+        printLine("Type:\n" ++ (print inferredType))
+        printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+        false
+
+testsuite.typeInferenceFailureTest : Text -> Text -> Boolean
+testsuite.typeInferenceFailureTest testDir name =
+  testPath = Debug.watch (name) FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")
+  print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
+
+  match parseTestcase testPath with
+    Left err -> Debug.watch ("Parse error:" ++ err) false
+    Right parsed ->
+      match typeCheck Context.empty parsed with
+        Right t -> Debug.watch ("Expected type error, but got  " ++ printExpression t) false
+        Left _ -> true
+
+
+{{ {perfTest} measures the time needed to parse the type of the Dhall prelude, which is around 700 lines of Dhall code.
+
+You need to specify the path of a copy of [https://github.com/dhall-lang/dhall-lang](https://github.com/dhall-lang/dhall-lang)
+
+```ucm
+.> run .external.dhall.v1.testsuite.perfTest <path to local copy of github.com/dhall-lang/dhall-lang>
+```
+}}
+testsuite.perfTest: '{IO, Exception} ()
+testsuite.perfTest _ =
+  args = !getArgs
+  match List.head args with
+    None -> printLine "Usage: run perfTest <path to local copy of https://github.com/dhall-lang/dhall-lang>"
+    Some basePath ->
+      startTime = !systemTimeMicroseconds
+      path = FilePath.FilePath (basePath ++ "/tests/type-inference/success/preludeB.dhall")
+      result = parseTestcase path
+      duration = !systemTimeMicroseconds - startTime
+      msg = match result with
+        Left _ -> "Parse failure in " ++ (Int.toText duration) ++ "μs"
+        Right _ -> "Parsed successfully in " ++ (Int.toText duration) ++ "μs"
+      printLine msg
+
+testsuite.runTests path =
   total = List.foldLeft updateResults (0,0) [
     runTestsRecursive  (path ++ "/tests/parser/success") "A.dhall" parseSuccessTest,
     runTestsRecursive  (path ++ "/tests/parser/failure") ".dhall" parseFailureTest,
     runTestsRecursive  (path ++ "/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
     runTestsRecursive  (path ++ "/tests/normalization") "A.dhall" normalizationTest,
+    -- runTestsRecursive  (path ++ "/tests/type-inference/success/unit") "A.dhall" typeInferenceTest,
+    runTestsRecursive  (path ++ "/tests/type-inference/success") "A.dhall" typeInferenceTest,
+    runTestsRecursive  (path ++ "/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
   ]
   printTestStatus path total
 
 
+{{ {runTestSuite} will run the [Dhall acceptance tests](https://github.com/dhall-lang/dhall-lang/tree/master/tests)
+
+Currently tests in the following categories are executed:
+
+ - Parser test
+ - Alpha normalization
+ - Beta normalization
+
+You need to specify the path to a local copy of [https://github.com/dhall-lang/dhall-lang](https://github.com/dhall-lang/dhall-lang) to run the command in ucm:
+
+```ucm
+.> run .external.dhall.v1.testsuite.runTestSuite <path to local copy of github.com/dhall-lang/dhall-lang>
+```
+
+}}
 testsuite.runTestSuite: '()
-testsuite.runTestSuite _ = 
+testsuite.runTestSuite _ =
   args = !getArgs
   match List.head args with
     None -> printLine "Usage: run runTestSuite <path to local copy of https://github.com/dhall-lang/dhall-lang>"

@@ -1,0 +1,31 @@
+syntax.filterExpressions : (Expression -> Boolean) -> Expression -> [Expression]
+syntax.filterExpressions p expression =
+  go : Expression -> [Expression]
+  go ex =
+    f = List.filter p
+    (if p ex then [ex]  else [])  ++
+    match ex with
+      Lambda x A b -> f [A, b]
+      Forall x A B -> f [A, B]
+      Let x t a b-> f (Optional.toList t ++ [a, b])
+      If t l r -> f [t, l, r]
+      Merge t u ot -> f (Optional.toList ot ++ [t, u])
+      ToMap t ot -> f (Optional.toList ot ++ [t])
+      EmptyList T -> f [T]
+      NonEmptyList ts -> f (Nonempty.toList ts)
+      Annotation t T -> f [t, T]
+      Expression.Operator l op r -> f [l, r]
+      Application a b -> f [a, b]
+      Field t y -> f [t]
+      ProjectByLabels t xs -> f [t]
+      ProjectByType t T -> f [t, T]
+      Completion T r -> f [T, r]
+      Assert T -> f [T]
+      With e ks v -> f [e, v]
+      Expression.TextLiteral (Chunks xys z) -> f (List.map Tuple.at2 xys)
+      RecordType ks -> f (List.map Tuple.at2 ks)
+      RecordLiteral ks -> f (List.map Tuple.at2 ks)
+      UnionType ks -> f (List.filterMap Tuple.at2 ks)
+      Expression.Some a -> f [a]
+      _ -> []
+  go expression
