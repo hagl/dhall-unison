@@ -4,7 +4,7 @@ use binary Term
 use syntax.Constant
 use support.Integer Integer
 use utils
-
+use type_inference
 use base.Natural <=
 use Optional Some
 use List
