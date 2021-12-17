@@ -1,8 +1,8 @@
-use .dhall.prs._typechecker.syntax Expression TextLiteral
-use .dhall.prs._typechecker.syntax.TextLiteral
-use .dhall.prs._typechecker.syntax
-use .dhall.prs._typechecker.syntax.Expression
-use .dhall.prs._typechecker.utils
+use syntax.TextLiteral Chunks
+use syntax.Constant
+use shift shift
+use syntax Expression filterExpressions
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 
 type_inference.functionCheck : Constant -> Constant -> Constant
 type_inference.functionCheck c1 c2 = match (c1, c2) with
@@ -39,57 +39,57 @@ type_inference.Context.lookup  t n ctx =
 
 type_inference.typeCheck : Context -> Expression -> Either Text Expression
 type_inference.typeCheck = cases ctx -> cases
-  Expression.Constant Constant.Type -> Right (Expression.Constant Constant.Kind)
-  Expression.Constant Constant.Kind -> Right (Expression.Constant Constant.Sort)
+  Constant Constant.Type -> Right (Constant Constant.Kind)
+  Constant Constant.Kind -> Right (Constant Constant.Sort)
 
-  Expression.Variable x n -> match Context.lookup x n ctx with
+  Variable x n -> match Context.lookup x n ctx with
     Optional.Some expression -> Right expression
     None -> Left ("Variable " ++ x ++ (if n == zero then "" else "@" ++ (Natural.toDecimalText n)) ++ " is unkonwn")
 
-  Expression.Builtin Builtin.Bool -> Right (Expression.Constant Constant.Type)
-  Expression.Builtin Builtin.True -> Right (Expression.Builtin Builtin.Bool)
-  Expression.Builtin Builtin.False -> Right (Expression.Builtin Builtin.Bool)
+  Builtin Builtin.Bool -> Right (Constant Constant.Type)
+  Builtin Builtin.True -> Right (Builtin Builtin.Bool)
+  Builtin Builtin.False -> Right (Builtin Builtin.Bool)
 
   -- Naturals
-  Expression.Builtin Builtin.Natural -> Right (Expression.Constant Constant.Type)
-  Expression.Builtin Builtin.NaturalBuild -> Right (
+  Builtin Builtin.Natural -> Right (Constant Constant.Type)
+  Builtin Builtin.NaturalBuild -> Right (
       Forall "_"
-        (Forall "natural" (Expression.Constant Constant.Type)
+        (Forall "natural" (Constant Constant.Type)
           (Forall "succ" (Forall "_" (Variable "natural" zero) (Variable "natural" zero))
           (Forall "zero" (Variable "natural" zero) (Variable "natural" zero))))
-        (Expression.Builtin Builtin.Natural))
-  Expression.Builtin Builtin.NaturalFold -> Right (
-    Forall "_" (Expression.Builtin Builtin.Natural)
+        (Builtin Builtin.Natural))
+  Builtin Builtin.NaturalFold -> Right (
+    Forall "_" (Builtin Builtin.Natural)
        (Forall "natural" (Expression.Constant Constant.Type)
           (Forall "succ" (Forall "_" (Variable "natural" zero) (Variable "natural" zero))
             (Forall "zero" (Variable "natural" zero)
               (Variable "natural" zero)))))
-  Expression.Builtin Builtin.NaturalIsZero -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
-  Expression.Builtin Builtin.NaturalEven -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
-  Expression.Builtin Builtin.NaturalOdd -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
-  Expression.Builtin Builtin.NaturalToInteger -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Integer))
-  Expression.Builtin Builtin.NaturalShow -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Text))
-  Expression.Builtin Builtin.NaturalSubtract -> Right (Forall "_" (Builtin Builtin.Natural) (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Natural)))
+  Builtin Builtin.NaturalIsZero -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
+  Builtin Builtin.NaturalEven -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
+  Builtin Builtin.NaturalOdd -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
+  Builtin Builtin.NaturalToInteger -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Integer))
+  Builtin Builtin.NaturalShow -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Text))
+  Builtin Builtin.NaturalSubtract -> Right (Forall "_" (Builtin Builtin.Natural) (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Natural)))
 
-  NaturalLiteral _ -> Right (Expression.Builtin Builtin.Natural)
+  NaturalLiteral _ -> Right (Builtin Builtin.Natural)
 
   -- Integer
 
-  Expression.Builtin Builtin.Integer -> Right (Expression.Constant Constant.Type)
-  IntegerLiteral _ -> Right (Expression.Builtin Builtin.Integer)
-  Expression.Builtin Builtin.IntegerShow -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Text))
-  Expression.Builtin Builtin.IntegerToDouble -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Double))
-  Expression.Builtin Builtin.IntegerNegate -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Integer))
-  Expression.Builtin Builtin.IntegerClamp -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Natural))
+  Builtin Builtin.Integer -> Right (Expression.Constant Constant.Type)
+  IntegerLiteral _ -> Right (Builtin Builtin.Integer)
+  Builtin Builtin.IntegerShow -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Text))
+  Builtin Builtin.IntegerToDouble -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Double))
+  Builtin Builtin.IntegerNegate -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Integer))
+  Builtin Builtin.IntegerClamp -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Natural))
 
   -- Double
 
-  Expression.Builtin Builtin.Double -> Right (Expression.Constant Constant.Type)
-  DoubleLiteral _ -> Right (Expression.Builtin Builtin.Double)
-  Expression.Builtin Builtin.DoubleShow -> Right (Forall "_" (Builtin Builtin.Double) (Builtin Builtin.Text))
+  Builtin Builtin.Double -> Right (Expression.Constant Constant.Type)
+  DoubleLiteral _ -> Right (Builtin Builtin.Double)
+  Builtin Builtin.DoubleShow -> Right (Forall "_" (Builtin Builtin.Double) (Builtin Builtin.Text))
 
   -- Text
-  Expression.Builtin Builtin.Text -> Right (Expression.Constant Constant.Type)
+  Builtin Builtin.Text -> Right (Expression.Constant Constant.Type)
   TextLiteral (Chunks texs _) ->
     match List.foldLeft (
       cases
@@ -101,22 +101,22 @@ type_inference.typeCheck = cases ctx -> cases
       (Right (Builtin Builtin.Text)) texs with
         Left err -> Left err
         Right (Builtin Builtin.Text) -> Right (Builtin Builtin.Text)
-  Expression.Builtin Builtin.TextShow -> Right (Forall "_" (Builtin Builtin.Text) (Builtin Builtin.Text))
-  Expression.Builtin Builtin.TextReplace -> Right (
+  Builtin Builtin.TextShow -> Right (Forall "_" (Builtin Builtin.Text) (Builtin Builtin.Text))
+  Builtin Builtin.TextReplace -> Right (
     Forall "needle" (Builtin Builtin.Text)
       (Forall "replacement" (Builtin Builtin.Text)
         (Forall "haystack" (Builtin Builtin.Text) (Builtin Builtin.Text))))
 
   -- Date, Time, Timezone
-  Expression.Builtin Builtin.Date -> Right (Expression.Constant Constant.Type)
-  Expression.Builtin Builtin.Time -> Right (Expression.Constant Constant.Type)
-  Expression.Builtin Builtin.TimeZone -> Right (Expression.Constant Constant.Type)
-  DateLiteral _ -> Right (Expression.Builtin Builtin.Date)
-  TimeLiteral _ -> Right (Expression.Builtin Builtin.Time)
-  TimeZoneLiteral _ -> Right (Expression.Builtin Builtin.TimeZone)
+  Builtin Builtin.Date -> Right (Expression.Constant Constant.Type)
+  Builtin Builtin.Time -> Right (Expression.Constant Constant.Type)
+  Builtin Builtin.TimeZone -> Right (Expression.Constant Constant.Type)
+  DateLiteral _ -> Right (Builtin Builtin.Date)
+  TimeLiteral _ -> Right (Builtin Builtin.Time)
+  TimeZoneLiteral _ -> Right (Builtin Builtin.TimeZone)
 
   -- List
-  Expression.Builtin Builtin.List -> Right (Forall "_" (Constant Constant.Type) (Constant Constant.Type))
+  Builtin Builtin.List -> Right (Forall "_" (Constant Constant.Type) (Constant Constant.Type))
   EmptyList T -> match typeCheck ctx T with
     Left err -> Left err
     Right (Constant Constant.Type) ->
@@ -137,7 +137,7 @@ type_inference.typeCheck = cases ctx -> cases
                 Optional.Some (Left err) -> Left err
             _ -> Left "Element type of list must be a type"
 
-  Expression.Operator e1 Operator.ListAppend e2 ->
+  Operator e1 Operator.ListAppend e2 ->
     match (typeCheck ctx e1, typeCheck ctx e2) with
       (Left err, _) -> Left err
       (_, Left err) -> Left err
@@ -192,7 +192,7 @@ type_inference.typeCheck = cases ctx -> cases
   -- Optional
   Builtin Builtin.Optional -> Right (Forall "_" (Constant Constant.Type) (Constant Constant.Type))
 
-  Expression.Some exp ->
+  Expression.Expression.Some exp ->
     match typeCheck ctx exp with
       Left err -> Left err
       Right t -> match typeCheck ctx t with
@@ -274,7 +274,7 @@ type_inference.typeCheck = cases ctx -> cases
       Left err -> Left err
       Right vt -> withUpdateType t vt ks
 
-  Expression.Operator e1 Operator.Prefer e2 -> match typeCheck ctx e1 with
+  Operator e1 Operator.Prefer e2 -> match typeCheck ctx e1 with
     Left err -> Left err
     Right (RecordType tExs1) -> match typeCheck ctx e2 with
       Left err -> Left err
@@ -284,13 +284,13 @@ type_inference.typeCheck = cases ctx -> cases
       Right _ -> Left "Right operand of ⫽ must be a record"
     Right _ -> Left "Left operand of ⫽ must be a record"
 
-  Expression.Operator e1 Operator.CombineRecordTerms e2 -> match typeCheck ctx e1 with
+  Operator e1 Operator.CombineRecordTerms e2 -> match typeCheck ctx e1 with
     Left err -> Left err
     Right t1 -> match typeCheck ctx e2 with
       Left err -> Left err
       Right t2 -> recursivelyMergeRecords t1 t2
 
-  Expression.Operator e1 Operator.CombineRecordTypes e2 -> match typeCheck ctx e1 with
+  Operator e1 Operator.CombineRecordTypes e2 -> match typeCheck ctx e1 with
     Left err -> Left err
     Right (Constant c1) -> match typeCheck ctx e2 with
       Left err -> Left err
@@ -307,7 +307,7 @@ type_inference.typeCheck = cases ctx -> cases
         Context tEx -> Context (List.map (cases (k, t) -> (k, shift +1 x zero t)) ((x, t1) +: tEx))
       match typeCheck newCtx t2 with
         Left err -> Left err
-        Right outputType@(Constant c2) -> Right (Expression.Constant (functionCheck c1 c2))
+        Right outputType@(Constant c2) -> Right (Constant (functionCheck c1 c2))
         Right t -> Left ("The output type of the function is not a Type, Kind or Sort, but " ++ (printExpression t))
     Right t -> Left ("The input type of the function is not a Type, Kind or Sort, but " ++ (printExpression t))
 
@@ -436,7 +436,7 @@ type_inference.typeCheck = cases ctx -> cases
   -- T::r -> ((T.default ⫽ r) : T.Type) : U
   Completion tEx rEx -> typeCheck ctx (Annotation (Operator (Field tEx "default") Prefer rEx) (Field tEx "Type"))
 
-  Expression.Operator e1 Equivalent e2 ->
+  Operator e1 Equivalent e2 ->
     match (typeCheck ctx e1, typeCheck ctx e2) with
       (Left err, _) -> Left err
       (_, Left err) -> Left err
@@ -449,7 +449,7 @@ type_inference.typeCheck = cases ctx -> cases
           _ -> Left ("Both operands of === must be terms")
         else Left ("Operands of === have different type")
   -- general operators
-  Expression.Operator e1 op e2 -> typeCheckOperator ctx e1 op e2
+  Operator e1 op e2 -> typeCheckOperator ctx e1 op e2
 
   _ -> Left "TypeError: unknown"
 

@@ -1,6 +1,6 @@
 use .dhall.trunk.support
 
-unique type syntax.Expression = 
+unique type syntax.Expression =
    -- | > x@n
   Variable Text Natural
   | -- | > λ(x : A) → b
@@ -66,7 +66,7 @@ unique type syntax.Expression =
   | -- | > Some s
     Some syntax.Expression
   | Builtin syntax.Builtin
-  | Constant syntax.Constant  
+  | Constant syntax.Constant
 
 
 unique type syntax.TextLiteral = Chunks [(Text, syntax.Expression)] Text
@@ -135,8 +135,8 @@ unique type syntax.Builtin
   | _None
   | Date
   | Time
-  | TimeZone    
-unique type syntax.Constant 
+  | TimeZone
+unique type syntax.Constant
   = Type
   | Kind
   | Sort
@@ -150,7 +150,7 @@ tl1 syntax.TextLiteral.<> tl2 = match tl1 with
 
 syntax.addTextToTextLiteral : Text -> TextLiteral -> TextLiteral
 syntax.addTextToTextLiteral t = cases (Chunks l x) -> Chunks l (x Text.++ t)
--- 
+--
 syntax.addExpresionToTextLiteral : syntax.Expression -> TextLiteral -> TextLiteral
 syntax.addExpresionToTextLiteral e = cases (Chunks l x) -> Chunks (l List.++ [(x, e)]) ""
 
@@ -163,7 +163,7 @@ syntax.splitOn needle haystack =
 
 -- -- | Split `Chunks` by lines
 syntax.linesLiteral : TextLiteral -> Nonempty TextLiteral
-syntax.linesLiteral = cases 
+syntax.linesLiteral = cases
   (Chunks [] suffix) -> Nonempty.map (t -> Chunks [] t) (splitOn ?\n suffix)
   (Chunks ((prefix, interpolation) +: pairs0) suffix0) ->
     splitLines = splitOn ?\n prefix
@@ -191,7 +191,7 @@ syntax.emptyLine = cases
 
 -- | Return the leading whitespace for a `Chunks` literal
 syntax.leadingSpaces : TextLiteral -> [Char]
-syntax.leadingSpaces chunks = 
+syntax.leadingSpaces chunks =
   isSpace c = (c == ?\s) || (c == ?\t)
   firstText = match chunks with
     Chunks [] suffix -> suffix
@@ -300,4 +300,40 @@ syntax.reservedIdentifiers = Set.union reservedKeywords (Set.fromList
   , "Type"
   , "Kind"
   , "Sort"
-  ]
+  ])
+
+-- ^ Directory path components (in reverse order), File name
+unique type syntax.File = File [Text] Text
+
+unique type syntax.FilePrefix
+    = Absolute  -- ^ '/', an absolute path
+    | Here      -- ^ '.', a path relative to the current working directory
+    | Parent    -- ^ '..', a path relative to the parent working directory
+    | Home      -- ^ '~', a path relative to the user's home directory
+
+-- | The URL scheme
+unique type syntax.Scheme
+    = HTTP  -- ^ > http://
+    | HTTPS -- ^ > https://
+
+-- scheme authority path query
+unique type syntax.URL = URL syntax.Scheme Text syntax.File (Optional Text)
+
+-- | How to interpret the path to the import
+unique type syntax.ImportMode
+    = Code      -- ^ The default behavior: import the path as code to interpret
+    | RawText   -- ^ 'as Text': import the path as raw text
+    | Location  -- ^ 'as Location': don't import and instead represent the path as a Dhall expression
+
+unique type syntax.ImportType
+    = Missing
+        -- ^ > missing
+    | Remote syntax.URL (Optional Expression)
+        -- ^ > https://authority directory file using headers
+    | Path syntax.FilePrefix syntax.File
+        -- ^ > /directory/file
+        --   > ./directory/file
+        --   > ../directory/file
+        --   > ~/directory/file
+    | Env Text
+        -- ^ > env:x

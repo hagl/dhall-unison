@@ -1,5 +1,9 @@
 use .syntax
 use .shift
+use syntax.TextLiteral Chunks
+use syntax.Constant
+use syntax Expression
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 
 substitution.substitute: Expression -> Text -> Natural -> Expression -> Expression
 substitution.substitute e x' n e0 =
@@ -20,7 +24,7 @@ substitution.substitute e x' n e0 =
     EmptyList T0 -> EmptyList (subst T0)
     NonEmptyList ts0 -> NonEmptyList (Nonempty.map subst ts0)
     Annotation t0 T0 -> Annotation (subst t0) (subst T0)
-    Expression.Operator l0 op r0 -> Expression.Operator (subst l0) op (subst r0)
+    Operator l0 op r0 -> Expression.Operator (subst l0) op (subst r0)
     Application f0 a0 -> Application (subst f0) (subst a0)
     Field t0 y -> Field (subst t0) y
     ProjectByLabels t0 xs -> ProjectByLabels (subst t0) xs
@@ -34,13 +38,13 @@ substitution.substitute e x' n e0 =
     DateLiteral d -> DateLiteral d
     TimeLiteral d -> TimeLiteral d
     TimeZoneLiteral z -> TimeZoneLiteral z
-    Expression.TextLiteral (Chunks xys0 z) -> Expression.TextLiteral (Chunks (List.map (cases (s, t0) -> (s, subst t0)) xys0) z)
+    TextLiteral (Chunks xys0 z) -> Expression.TextLiteral (Chunks (List.map (cases (s, t0) -> (s, subst t0)) xys0) z)
     RecordType ks0 -> RecordType (List.map (cases (k, t_T0) -> (k, subst t_T0)) ks0)
     RecordLiteral ks0 -> RecordLiteral (List.map (cases (k, t_T0) -> (k, subst t_T0)) ks0)
     UnionType ks0 -> UnionType (List.map (cases (k, t) -> (k, Optional.map subst t)) ks0)
-    Expression.Some a0 -> Expression.Some (subst a0)
-    Expression.Builtin b -> Expression.Builtin b
-    Expression.Constant c -> Expression.Constant c
+    Expression.Expression.Some a0 -> Expression.Some (subst a0)
+    Builtin b -> Expression.Builtin b
+    Constant c -> Expression.Constant c
 
 
 

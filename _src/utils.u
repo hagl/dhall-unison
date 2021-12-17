@@ -1,7 +1,13 @@
 use syntax
-use syntax.TextLiteral
+use syntax.TextLiteral Chunks
 use syntax.Constant
 use syntax Expression
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+-- use .dhall.prs._imports.syntax
+-- use .dhall.prs._imports.syntax.TextLiteral Chunks
+-- use .dhall.prs._imports.syntax.Constant
+-- use .dhall.prs._imports.syntax Expression
+-- use .dhall.prs._imports.syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 
 utils.escapeText: Text -> Text
 utils.escapeText t =
@@ -53,7 +59,7 @@ utils.printExpression = cases
   EmptyList T0 -> "[] : " ++ (printExpression T0)
   NonEmptyList ts0 -> "[" ++ (List.foldLeft (++) "" (List.intersperse ", " (List.map printExpression (Nonempty.toList ts0)))) ++ "]"
   Annotation t0 T0 -> (printExpression t0) ++ ": " ++ (printExpression T0)
-  Expression.Operator l0 op r0 -> (printExpression l0) ++ (printOperator op) ++ (printExpression r0)
+  Operator l0 op r0 -> (printExpression l0) ++ (printOperator op) ++ (printExpression r0)
   Application f0 a0 -> (printExpression f0) ++ " " ++ (printExpression a0)
   Field t0 y -> "(" ++ (printExpression t0) ++ ")." ++ y
   ProjectByLabels t0 xs -> "(" ++ (printExpression t0) ++ ").{" ++ (List.foldLeft (++) "" (List.intersperse ", " xs)) ++ "}"
@@ -64,7 +70,7 @@ utils.printExpression = cases
   DoubleLiteral d -> Float.toText d
   NaturalLiteral n -> Natural.toDecimalText n
   IntegerLiteral n -> Integer.toText n
-  Expression.TextLiteral (Chunks xys0 z) -> (List.foldLeft (++) "" (List.intersperse ", " (List.map (cases (t, ex) -> t ++ "{" ++ (printExpression ex) ++ "}") xys0))) ++ z
+  TextLiteral (Chunks xys0 z) -> (List.foldLeft (++) "" (List.intersperse ", " (List.map (cases (t, ex) -> t ++ "{" ++ (printExpression ex) ++ "}") xys0))) ++ z
   RecordType ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ ": " ++ (printExpression e)) ks0)) ++ "}"
   RecordLiteral ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ " = " ++ (printExpression e)) ks0)) ++ "}"
   UnionType ks0 ->
@@ -72,9 +78,9 @@ utils.printExpression = cases
     (k, None) -> k
     (k, Optional.Some ex) -> k ++ ": " ++ (printExpression ex)) ks0
     "<" ++ (Text.join " | " unionElements)++ ">"
-  Expression.Some a0 -> "Some " ++ (printExpression a0)
-  Expression.Builtin b -> printBuiltin b
-  Expression.Constant c -> printConstant c
+  Expression.Expression.Some a0 -> "Some " ++ (printExpression a0)
+  Builtin b -> printBuiltin b
+  Constant c -> printConstant c
   DateLiteral (Date.Date y m d) -> (Nat.toText y) ++ "-" ++ (Nat.toText m) ++ "-" ++ (Nat.toText d)
   TimeLiteral (Time.Time h m s p) -> (Nat.toText h) ++ ":" ++ (Nat.toText m) ++ ":" ++ (Nat.toText (s / (pow 10  p)))
   TimeZoneLiteral (TimeZone.TimeZone minutes) ->
