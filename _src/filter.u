@@ -31,6 +31,6 @@ syntax.filterExpressions p expression =
       RecordType ks -> f (List.map Tuple.at2 ks)
       RecordLiteral ks -> f (List.map Tuple.at2 ks)
       UnionType ks -> f (List.filterMap Tuple.at2 ks)
-      Expression.Expression.Some a -> f [a]
+      DhallSome a -> f [a]
       _ -> []
   go expression

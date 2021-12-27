@@ -45,7 +45,7 @@ alpha_normalization.alphaNormalize = cases
   RecordType ks0 -> RecordType (List.map (cases (k, t_T0) -> (k, alphaNormalize t_T0)) ks0)
   RecordLiteral ks0 -> RecordLiteral (List.map (cases (k, t_T0) -> (k, alphaNormalize t_T0)) ks0)
   UnionType ks0 -> UnionType (List.map (cases (k, t) -> (k, Optional.map alphaNormalize t)) ks0)
-  Expression.Expression.Some a0 -> Expression.Some (alphaNormalize a0)
+  DhallSome a0 -> DhallSome (alphaNormalize a0)
   Builtin b -> Builtin b
   Constant c -> Constant c
   DateLiteral t -> DateLiteral t

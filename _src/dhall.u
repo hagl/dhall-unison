@@ -49,7 +49,7 @@ DhallValue.fromExpression expr =
         ([], rights) -> Right (DhallRecord (Map.fromList rights))
         (h +: _, _) -> Left h
       UnionType ks0 -> fail "UnionType"
-      Expression.Expression.Some a0 -> match go a0 path with
+      DhallSome a0 -> match go a0 path with
         Right v -> Right (DhallOptional (Optional.Some v))
         Left t -> Left t
       Builtin b -> fail "Builtin"

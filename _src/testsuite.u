@@ -1,4 +1,4 @@
-use syntax
+use syntax Expression
 use binary
 use binary Term
 use syntax.Constant
@@ -190,10 +190,11 @@ testsuite.perfTest _ =
 testsuite.runTests path =
   total = List.foldLeft updateResults (0,0) [
     runTestsRecursive  (path ++ "/tests/parser/success") "A.dhall" parseSuccessTest,
+    -- runTestsRecursive  (path ++ "/tests/parser/success/unit/import") "A.dhall" parseSuccessTest,
     runTestsRecursive  (path ++ "/tests/parser/failure") ".dhall" parseFailureTest,
     runTestsRecursive  (path ++ "/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
     runTestsRecursive  (path ++ "/tests/normalization") "A.dhall" normalizationTest,
-    -- runTestsRecursive  (path ++ "/tests/type-inference/success/unit") "A.dhall" typeInferenceTest,
+    -- -- runTestsRecursive  (path ++ "/tests/type-inference/success/unit") "A.dhall" typeInferenceTest,
     runTestsRecursive  (path ++ "/tests/type-inference/success") "A.dhall" typeInferenceTest,
     runTestsRecursive  (path ++ "/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
   ]

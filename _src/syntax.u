@@ -62,9 +62,9 @@ unique type syntax.Expression =
     --   > < k : T | ks… >
     --   > < k | ks… >
     UnionType [(Text, Optional syntax.Expression)]
-  -- | Import ImportType ImportMode (Optional (Digest SHA256))
+  | Import syntax.ImportType syntax.ImportMode (Optional syntax.SHA256Digest)
   | -- | > Some s
-    Some syntax.Expression
+    DhallSome syntax.Expression
   | Builtin syntax.Builtin
   | Constant syntax.Constant
 
@@ -132,7 +132,7 @@ unique type syntax.Builtin
   | List
   | True
   | False
-  | _None
+  | DhallNone
   | Date
   | Time
   | TimeZone
@@ -328,7 +328,7 @@ unique type syntax.ImportMode
 unique type syntax.ImportType
     = Missing
         -- ^ > missing
-    | Remote syntax.URL (Optional Expression)
+    | Remote syntax.URL (Optional syntax.Expression)
         -- ^ > https://authority directory file using headers
     | Path syntax.FilePrefix syntax.File
         -- ^ > /directory/file
@@ -337,3 +337,5 @@ unique type syntax.ImportType
         --   > ~/directory/file
     | Env Text
         -- ^ > env:x
+
+unique type syntax.SHA256Digest = SHA256Digest Bytes

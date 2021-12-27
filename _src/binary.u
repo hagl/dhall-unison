@@ -1,10 +1,17 @@
 use support
 
-use syntax.Constant
+use syntax.ImportMode Code Location
+use syntax.ImportType
+use syntax ImportType URL
 use syntax Expression
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax Builtin Operator Constant
+use syntax.Builtin Builtin._None
+use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend CombineRecordTerms Prefer CombineRecordTypes Alternative Equivalent Some
+use syntax.Constant Type Kind Sort
+use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
+use syntax.Expression DhallSome Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 use syntax.TextLiteral Chunks
-use support.Integer Integer
+-- use support.Integer Integer
 use support encodeFloat
 
 use base.Natural <=
@@ -18,9 +25,9 @@ unique type binary.Term
   | TNegInteger Natural
   | TBytes Bytes
   | TString Text
-  | TList  [binary.Term]
-  | TMap  [(binary.Term, binary.Term)]
-  | TTagged  Nat binary.Term
+  | TList [binary.Term]
+  | TMap [(binary.Term, binary.Term)]
+  | TTagged Nat binary.Term
   | TBool Boolean
   | TNull
   | TSimple Nat
@@ -51,28 +58,28 @@ binary.encodeBuiltin = cases
   TextShow -> "Text/show"
   TextReplace -> "Text/replace"
   Bool -> "Bool"
-  Builtin.Optional -> "Optional"
-  Builtin._None -> "None"
-  Builtin.Natural -> "Natural"
-  Builtin.Integer -> "Integer"
+  Optional -> "Optional"
+  DhallNone -> "None"
+  Natural -> "Natural"
+  Integer -> "Integer"
   Double -> "Double"
   Text -> "Text"
   List -> "List"
-  Builtin.Date -> "Date"
-  Builtin.Time -> "Time"
-  Builtin.TimeZone -> "TimeZone"
+  Date -> "Date"
+  Time -> "Time"
+  TimeZone -> "TimeZone"
 
 binary.encodeConstant : Constant -> Text
 binary.encodeConstant = cases
-  Constant.Type -> "Type"
-  Constant.Kind -> "Kind"
-  Constant.Sort -> "Sort"
+  Type -> "Type"
+  Kind -> "Kind"
+  Sort -> "Sort"
 
 binary.encodeOperator : Operator -> Nat
 binary.encodeOperator = cases
   Or -> 0
   And -> 1
-  Operator.Equal -> 2
+  Equal -> 2
   NotEqual -> 3
   Plus -> 4
   Times -> 5
@@ -83,7 +90,6 @@ binary.encodeOperator = cases
   CombineRecordTypes -> 10
   Alternative -> 11
   Equivalent -> 12
-
 
 binary.encode : Expression ->{} Term
 binary.encode expression =
@@ -96,8 +102,8 @@ binary.encode expression =
     Variable x n -> match Natural.toNat n with
       Some m -> TList [TString x, TPosInt m]
       None -> TList [TString x, TPosInteger n]
-    Builtin Builtin.True -> TBool true
-    Builtin Builtin.False -> TBool false
+    Builtin True -> TBool true
+    Builtin False -> TBool false
     Builtin b -> TString (encodeBuiltin b)
     Constant c -> TString (encodeConstant c)
     expression@(Application _ _) ->
@@ -114,7 +120,7 @@ binary.encode expression =
     EmptyList (Application (Builtin List) T0) -> TList [TPosInt 4, encode T0]
     EmptyList T0 -> TList [TPosInt 28, encode T0]
     NonEmptyList ts0 -> TList ([TPosInt 4, TNull ] ++ (List.map encode (Nonempty.toList ts0)))
-    Expression.Expression.Some t0 -> TList [TPosInt 5, TNull, encode t0]
+    DhallSome t0 -> TList [TPosInt 5, TNull, encode t0]
     Merge t0 u0 None -> TList [TPosInt 6, encode t0, encode u0]
     Merge t0 u0 (Some T0) -> TList [TPosInt 6, encode t0, encode u0, encode T0]
     ToMap t0 None -> TList [TPosInt 27, encode t0]
@@ -129,10 +135,10 @@ binary.encode expression =
     NaturalLiteral n -> match Natural.toNat n with
       Some nat -> TList [TPosInt 15, TPosInt nat]
       None -> TList [TPosInt 15, TPosInteger n]
-    IntegerLiteral (Integer false natural) -> match Natural.toNat natural with
+    IntegerLiteral (support.Integer.Integer false natural) -> match Natural.toNat natural with
       Some nat -> TList [TPosInt 16, TPosInt nat]
       None -> TList [TPosInt 16, TPosInteger natural]
-    IntegerLiteral (Integer true natural) ->
+    IntegerLiteral (support.Integer.Integer true natural) ->
       natural1 = natural Natural.- one
       match Natural.toNat natural1 with
         Some nat -> TList [TPosInt 16, TNegInt nat]
@@ -158,7 +164,37 @@ binary.encode expression =
       positive = minutes Int.>= +0
       absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
       TList [TPosInt 32, TBool positive, TPosInt (absMin / 60), TPosInt (Nat.mod absMin 60)]
-
+    Import importType0 importMode0 hash0 ->
+      hash1 = match hash0 with
+        None -> TNull
+        Optional.Some (SHA256Digest digest) -> TBytes (0xs1220 Bytes.++ digest)
+      importMode1 = match importMode0 with
+        Code -> TPosInt 0
+        RawText -> TPosInt 1
+        Location -> TPosInt 2
+      importType1 = match importType0 with
+        Remote (URL scheme0 authority0 (File directory0 file0) query0) headers0 ->
+          scheme1 = match scheme0 with
+            HTTP -> TPosInt 0
+            HTTPS -> TPosInt 1
+          authority1 = TString authority0
+          headers1 = Optional.fold 'TNull encode headers0
+          directory1 = map TString (reverse directory0)
+          query1 = Optional.fold 'TNull TString query0
+          file1 = TString file0
+          [scheme1, headers1, authority1] ++ directory1 ++ [file1, query1]
+        Path filePrefix0 (File directory0 file0) ->
+          directory1 = map TString (reverse directory0)
+          filePrefix1 = match filePrefix0 with
+            Absolute -> TPosInt 2
+            Here -> TPosInt 3
+            Parent -> TPosInt 4
+            Home -> TPosInt 5
+          file1 = TString file0
+          filePrefix1 +: directory1 :+ file1
+        Env x -> [ TPosInt 6, TString x]
+        Missing -> [ TPosInt 7 ]
+      TList ([ TPosInt 24, hash1, importMode1 ] ++ importType1)
 binary.Term.toBytes: Term -> Bytes
 binary.Term.toBytes = cases
   TPosInt n -> majorTypeIntArg 0 n
