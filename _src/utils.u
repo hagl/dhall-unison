@@ -1,5 +1,6 @@
 use syntax
 use syntax.TextLiteral Chunks
+use syntax.ImportMode Code RawText Location
 use syntax.Constant Type Kind Sort
 use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
 use syntax Expression
@@ -20,7 +21,7 @@ utils.escapeText t =
     ?\\ -> [?\\, ?\\]
     c ->
       n = Char.toNat c
-      if n <= 32 then
+      if n < 32 then
         hexEncoding = Natural.toHex (Natural.fromNat n)
         Text.toCharList ((if n < 16 then "\\u000" else "\\u00") ++ hexEncoding)
       else [c]
@@ -84,6 +85,39 @@ utils.printExpression = cases
       positive = minutes Int.>= +0
       absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
       (if positive then "+" else "-") ++ (Nat.toText (absMin / 60)) ++ ":" ++ (Nat.toText (Nat.mod absMin 60))
+  Import importType importMode optDigest -> (printImportType importType) ++ (printImportMode importMode) ++ (Optional.fold '("") (d -> " " ++ printDigest d) optDigest)
+
+utils.printDigest : SHA256Digest -> Text
+utils.printDigest = cases SHA256Digest bytes ->
+  Text.fromCharList (List.map Char.fromNat (Bytes.toList (Bytes.toBase64 bytes)))
+
+utils.printFile : File -> Text
+utils.printFile = cases File dirs file -> Text.join "/" (List.reverse (file +: dirs))
+
+utils.printImportMode : ImportMode -> Text
+utils.printImportMode = cases
+  Code -> ""
+  RawText -> " as Text"
+  Location -> " as Location"
+
+utils.printScheme : Scheme -> Text
+utils.printScheme = cases
+  HTTPS -> "https://"
+  HTTP -> "http://"
+
+utils.printFilePrefix : FilePrefix -> Text
+utils.printFilePrefix = cases
+  Absolute -> "/"
+  Here -> "./"
+  Parent -> "../"
+  Home -> "~/"
+
+utils.printImportType : ImportType -> Text
+utils.printImportType = cases
+  Missing -> "missing"
+  Remote (URL scheme authority file optQuery) optHeaders -> (printScheme scheme) ++ authority ++ (printFile file) ++ (Optional.getOrElse "" optQuery) ++ (Optional.fold '("") (h -> " using " ++ (printExpression h)) optHeaders)
+  Path prefix file -> (printFilePrefix prefix) ++ (printFile file)
+  Env t -> "env:" ++ t
 
 utils.printConstant : Constant -> Text
 utils.printConstant = cases

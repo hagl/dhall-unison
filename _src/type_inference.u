@@ -6,6 +6,7 @@ use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmp
 use syntax.Operator Or Plus TextAppend ListAppend And CombineRecordTerms Prefer CombineRecordTypes Times Equal NotEqual Equivalent Alternative
 use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
 use Optional
+use utils
 
 type_inference.functionCheck : Constant -> Constant -> Constant
 type_inference.functionCheck c1 c2 = match (c1, c2) with
@@ -38,6 +39,11 @@ type_inference.Context.lookup  t n ctx =
     ((t1, e) +: rest) | t == t1 -> if n == zero then Some e else go (n - one) rest
     ( _  +: rest) -> go n rest
   match ctx with Context list -> go n list
+
+type_inference.Context.dump : Context -> Text
+type_inference.Context.dump = cases Context list ->
+  Text.join ",\n" (List.map (cases (t, ex) -> t ++ " -> " ++ (utils.printExpression ex)) list)
+
 
 
 type_inference.typeCheck : Context -> Expression -> Either Text Expression
@@ -126,7 +132,7 @@ type_inference.typeCheck = cases ctx -> cases
       match (betaNormalize T) with
         t@(Application (Builtin List) T) -> Right t
         t -> Left ("Expected type annotation on empty list to by a List type, but got " ++ (printExpression t))
-    _ -> Left "Element type of list must be a type"
+    _ -> Left "Element type of empty list must be a type"
   NonEmptyList (Nonempty x rest) ->
     match  typeCheck ctx x with
       Left e -> Left e
@@ -138,7 +144,8 @@ type_inference.typeCheck = cases ctx -> cases
                 None -> Right (Application (Builtin List) t)
                 Optional.Some (Right ((x, tx), _)) -> Left ("List contains elements of type " ++ (printExpression t) ++ " and type " ++ (printExpression tx))
                 Optional.Some (Left err) -> Left err
-            _ -> Left "Element type of list must be a type"
+            Right c -> Debug.watch ((printExpression t) ++ " : " ++ (printExpression c) ++ "\n" ++ (Context.dump ctx)) (Left "Element type of list must be a type")
+            -- _ -> Left "Element type of list must be a type"
 
   Operator e1 ListAppend e2 ->
     match (typeCheck ctx e1, typeCheck ctx e2) with
@@ -259,15 +266,19 @@ type_inference.typeCheck = cases ctx -> cases
   ProjectByType expr tExpr -> match typeCheck ctx expr with
     Left err -> Left err
     Right (RecordType tTs) ->
-      match betaNormalize tExpr with
-        tt@(RecordType sTs) ->
-          checkCommonType : Text -> Expression -> Boolean
-          checkCommonType x pt = match List.find (p -> Tuple.at1 p == x) tTs with
-            None -> false
-            Optional.Some p -> equivalent (Tuple.at2 p) pt
-          match List.find (cases (x, t) -> not (checkCommonType x t)) sTs with
-            None -> Right  tt
-            Optional.Some (x, t) -> Left ("Attribute '" ++ x ++ "' is missing in source expression or has different type than in projected type")
+      match typeCheck ctx tExpr with
+        Left err -> Left err
+        Right (Constant _) ->
+          match betaNormalize tExpr with
+            tt@(RecordType sTs) ->
+              checkCommonType : Text -> Expression -> Boolean
+              checkCommonType x pt = match List.find (p -> Tuple.at1 p == x) tTs with
+                None -> false
+                Optional.Some p -> equivalent (Tuple.at2 p) pt
+              match List.find (cases (x, t) -> not (checkCommonType x t)) sTs with
+                None -> Right  tt
+                Optional.Some (x, t) -> Left ("Attribute '" ++ x ++ "' is missing in source expression or has different type than in projected type")
+        Right t -> Left ("Trying to project by type to something that is not a type but " ++ (printExpression t))
     Right tp -> Left ("The projection by type is attempted on something that is not a record but of type " ++ (printExpression tp))
 
   --     With syntax.Expression (Nonempty Text) syntax.Expression
@@ -354,7 +365,8 @@ type_inference.typeCheck = cases ctx -> cases
     Right (Constant c) ->
       a1 = betaNormalize a0
       newCtx = match ctx with
-        Context tEx -> Context ((x, a1) +: (List.map (cases (k, t) -> (k, shift +1 x zero t)) tEx))
+        -- Context tEx -> Context ((x, a1) +: (List.map (cases (k, t) -> (k, shift +1 x zero t)) tEx))
+        Context tEx -> Context ((List.map (cases (k, t) -> (k, shift +1 x zero t)) ((x, a1) +: tEx)))
       match typeCheck newCtx b with
         Left err -> Left err
         Right outputType -> Right (Forall x a1 outputType)
@@ -504,13 +516,14 @@ type_inference.mergeReduceType oResultType alternativeTypes handlerTypes =
     (oType, (x, None) +: restAlternatives, (y, typ) +: restHandlers) | x == y -> match Optional.map (equivalent typ) oType with
       Optional.Some false -> Left ("Type for handler for `" ++ x ++ "` is `" ++ (printExpression typ) ++ "`, doesn't match type `" ++ (Optional.getOrElse "" (Optional.map printExpression oType)))
       _ -> go (Some typ, restAlternatives, restHandlers)
-    (oType, (x, Optional.Some altType) +: restAlternatives, (y, Forall z inputType typ) +: restHandlers) | x == y ->
+    (oType, (x, Optional.Some altType) +: restAlternatives, (y, Forall z inputType typ0) +: restHandlers) | x == y ->
       if (equivalent altType inputType) then
+        typ = shift -1 z zero typ0
         match Optional.map (equivalent typ) oType with
           Optional.Some false -> Left ("Type for handler for `" ++ x ++ "` is `" ++ (printExpression typ) ++ "`, doesn't match type `" ++ (Optional.getOrElse "" (Optional.map printExpression oType)))
           _ ->
             -- ensure z not free in typ
-            match filterExpressions (e -> e === Variable z zero) typ with
+            match filterExpressions (e -> e === Variable z zero) typ0 with
               [] -> go (Some typ, restAlternatives, restHandlers)
               _ -> Left ("Variable '" ++ z ++ "' is used in the type of handler for '" ++ x)
       else Left ("Handler for alternative `" ++ x ++ "` doesn't have the correct input type")

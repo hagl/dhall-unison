@@ -45,7 +45,7 @@ substitution.substitute e x' n e0 =
     DhallSome a0 -> DhallSome (subst a0)
     Builtin b -> Expression.Builtin b
     Constant c -> Expression.Constant c
-
+    Import importType importMode optDigest -> Import importType importMode optDigest
 
 
 use test
