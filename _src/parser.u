@@ -1,12 +1,14 @@
 use .external.stew.parser Parser ErrorFancy
 use .external.stew.parser.Parser <*
 use parser.util string
--- use syntax TextLiteral
 use syntax.TextLiteral Chunks
 use syntax.Constant
 use syntax Expression
+use syntax addTextToTextLiteral
 use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 use syntax.ImportMode Code RawText Location
+use support Date Time TimeZone Integer
+
 use Optional
 
 parser.util.string : Text -> Parser e Char Text
@@ -828,6 +830,7 @@ parser.alternative5 dExpression =
 
   builtinExpression : Parser e Char Expression
   builtinExpression =
+    use syntax.Builtin Integer Date Time TimeZone
     peek >>= cases
       Optional.Some ?N -> Parser.oneOf [
           , (builtin "Natural/fold") >>= '(Parser.const (Builtin NaturalFold))
@@ -1116,27 +1119,35 @@ parser.checkDate y m d = match m with
 
 
 parser.fullDate : Parser e Char Date
-parser.fullDate = dateYear ^ (minus *> dateMonth) ^ (minus *> dateDay) >>= (cases -- TODO check day with regards to month/year
-  ((y, m), d) | checkDate y m d -> Parser.const (Date y m d)
-  ((y, m), d) -> failMessage ("Invalid date " ++ (Nat.toText y) ++ "-" ++(Nat.toText m) ++ "-" ++(Nat.toText d)))
+parser.fullDate =
+  use support.Date Date
+  dateYear ^ (minus *> dateMonth) ^ (minus *> dateDay) >>= (cases -- TODO check day with regards to month/year
+    ((y, m), d) | checkDate y m d -> Parser.const (Date y m d)
+    ((y, m), d) -> failMessage ("Invalid date " ++ (Nat.toText y) ++ "-" ++(Nat.toText m) ++ "-" ++(Nat.toText d)))
 
 parser.partialTime : Parser e Char Time
-parser.partialTime = timeHour ^ (colon *> timeMinutes) ^ (colon *> timeSeconds) ^ (optional timeSecfrac) >>= cases
-  (((h, m), s), None) -> Parser.const (Time h m s 0)
-  (((h, m), s), Optional.Some frac) -> match (Nat.fromText ((Nat.toText s) ++ frac)) with
-    Optional.Some n -> Parser.const (Time h m n (Text.size frac))
-    None -> failMessage ("cannot parse fractional part '" ++ frac ++ "'")
+parser.partialTime =
+  use support.Time Time
+  timeHour ^ (colon *> timeMinutes) ^ (colon *> timeSeconds) ^ (optional timeSecfrac) >>= cases
+    (((h, m), s), None) -> Parser.const (Time h m s 0)
+    (((h, m), s), Optional.Some frac) -> match (Nat.fromText ((Nat.toText s) ++ frac)) with
+      Optional.Some n -> Parser.const (Time h m n (Text.size frac))
+      None -> failMessage ("cannot parse fractional part '" ++ frac ++ "'")
 
 parser.timeNumoffset : Parser e Char TimeZone
-parser.timeNumoffset = (or plus minus) ^ timeHour ^ (colon *> timeMinutes) $> cases
-  ((?+,  h), m) -> TimeZone (Nat.toInt (h * 60 + m))
-  ((?-,  h), m) -> TimeZone (-1 * (Nat.toInt (h * 60 + m)))
+parser.timeNumoffset =
+  use support.TimeZone TimeZone
+  (or plus minus) ^ timeHour ^ (colon *> timeMinutes) $> cases
+    ((?+,  h), m) -> TimeZone (Nat.toInt (h * 60 + m))
+    ((?-,  h), m) -> TimeZone (-1 * (Nat.toInt (h * 60 + m)))
 
 
 parser.timeOffset : Parser e Char TimeZone
-parser.timeOffset = oneOf [
-  timeNumoffset,
-  char ?Z $> '(TimeZone +0)
+parser.timeOffset =
+  use support.TimeZone TimeZone
+  oneOf [
+    timeNumoffset,
+    char ?Z $> '(TimeZone +0)
   ]
 
 parser.temporalLiteral : Parser e Char Expression

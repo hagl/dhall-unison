@@ -61,17 +61,67 @@ import.corsCompliant parent child headers = match (parent, child) with
 -- unique type Chained
 
 unique ability import.Import where
-  load : ImportType -> ImportMode -> (Optional SHA256Digest) -> Expression
+  import : ImportType -> ImportMode -> (Optional SHA256Digest) -> Expression
   tryResolve : Expression -> Optional Expression
 
+unique ability import.Loader where
+  load : ImportType -> Text
 
--- import.handleImport : ImportMode -> Text -> Expression
--- import.handleImport importMode test = match importMode with
---   RawText
+unique ability import.Cache where
+  cacheLoad : SHA256Digest -> Optional Expression
+  cacheStore : Expression -> ()
 
---     Right parsedExpression ->
---       match type_inference.typeCheck Context.empty parsedExpression with
---           Left error -> Left ("Type error: " ++ error)
+import.Cache.impl.load: FilePath -> SHA256Digest -> Optional Expression
+import.Cache.impl.load p = cases SHA256Digest bytes ->
+    base16 = Bytes.toBase16 bytes
+    path = FilePath.FilePath (FilePath.toText p ++ "/1220" ++ (Text.fromCharList (List.map Char.fromNat (Bytes.toList base16))))
+    match (catch
+      '(bracket
+          '(openFile (path) Read)
+          closeFile
+          (fileHandle -> getBytes fileHandle (base.io.getFileSize path)))
+      |> Either.mapLeft cases Failure _ t _ -> t) with
+      Left err ->
+        Debug.watch ("Cache miss: " ++ (FilePath.toText path))
+        None
+      Right encoded ->
+        hashed = base.crypto.hashBytes HashAlgorithm.Sha2_256 encoded
+        if hashed === bytes
+          then match binary.Term.fromBytes encoded with
+            Left err ->
+              Debug.watch ("Decoding error for cached file: "  ++ (FilePath.toText path) ++ "\n" ++ err)
+              None
+            Right decoded -> match binary.decodeTerm decoded with
+              Left err ->
+                Debug.watch ("Decoding error for cached file: "  ++ (FilePath.toText path) ++ "\n" ++ err)
+                None
+              Right expression -> Some expression
+          else
+            Debug.watch ("File loaded from cache has wrong hash: "  ++ (FilePath.toText path))
+            None
+
+
+
+import.withoutCache: (a ->{import.Cache} b) -> a -> b
+import.withoutCache f a =
+  handler = cases
+    {cacheLoad digest -> resume} ->
+      handle resume None with handler
+    {cacheStore expression -> resume} ->
+      handle resume () with handler
+    {res} -> res
+  handle f a with handler
+
+import.readOnlyCache: FilePath -> (a ->{import.Cache} b) -> a -> b
+import.readOnlyCache p f a =
+  handler = cases
+    {cacheLoad digest -> resume} ->
+      cached = Cache.impl.load p digest
+      handle resume cached with handler
+    {cacheStore expression -> resume} ->
+      handle resume () with handler
+    {res} -> res
+  handle f a with handler
 
 import.locationType : Expression
 import.locationType = UnionType [
@@ -155,7 +205,7 @@ import.resolveExpression = cases
   DateLiteral t -> DateLiteral t
   TimeLiteral t -> TimeLiteral t
   TimeZoneLiteral tz -> TimeZoneLiteral tz
-  Import it im oDig -> load it im oDig
+  Import it im oDig -> import it im oDig
 
 
 import.verifyAndResolve : FilePrefix -> File -> (Optional syntax.SHA256Digest) -> Map (ImportType, ImportMode) Expression -> [ImportType] -> Either Text (Expression, Map (ImportType, ImportMode) Expression)
@@ -184,7 +234,7 @@ import.resolve base expression =
 import.resolveImports : ImportType -> [ImportType] -> Map (ImportType, ImportMode) Expression -> Expression -> Either Text (Expression, Map (ImportType, ImportMode) Expression)
 import.resolveImports base previous cache expression =
   handler cache = cases
-    {Import.load importType importMode oDigest -> resume} ->
+    {Import.import importType importMode oDigest -> resume} ->
       chained = canonicalizeImport (chainImport base importType)
       if List.contains chained previous
         then Left ("Cyclic imports: " ++ (printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (printImportType it)) previous)))

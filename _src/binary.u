@@ -1,14 +1,18 @@
-use support
+use support Date Time TimeZone
+use support.Date Date
+use support.Time Time
+use support.TimeZone TimeZone
 
 use syntax.ImportMode Code Location
 use syntax.ImportType
 use syntax ImportType URL
+use syntax.URL URL
 use syntax Expression
 use syntax Builtin Operator Constant
 use syntax.Builtin Builtin._None
 use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend CombineRecordTerms Prefer CombineRecordTypes Alternative Equivalent Some
 use syntax.Constant Type Kind Sort
-use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
+use syntax.Builtin Optional Natural Integer Double Text List NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
 use syntax.Expression DhallSome Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 use syntax.TextLiteral Chunks
 -- use support.Integer Integer
@@ -18,7 +22,7 @@ use base.Natural <=
 use Optional Some
 use List
 
-unique type binary.Term
+structural type binary.Term
   = TPosInt Nat
   | TNegInt Nat
   | TPosInteger Natural
@@ -34,40 +38,42 @@ unique type binary.Term
   | TFloat Bytes
 
 binary.encodeBuiltin : Builtin -> Text
-binary.encodeBuiltin = cases
-  NaturalBuild -> "Natural/build"
-  NaturalFold -> "Natural/fold"
-  NaturalIsZero -> "Natural/isZero"
-  NaturalEven -> "Natural/even"
-  NaturalOdd -> "Natural/odd"
-  NaturalToInteger -> "Natural/toInteger"
-  NaturalShow -> "Natural/show"
-  NaturalSubtract -> "Natural/subtract"
-  IntegerToDouble -> "Integer/toDouble"
-  IntegerShow -> "Integer/show"
-  IntegerNegate -> "Integer/negate"
-  IntegerClamp -> "Integer/clamp"
-  DoubleShow -> "Double/show"
-  ListBuild -> "List/build"
-  ListFold -> "List/fold"
-  ListLength -> "List/length"
-  ListHead -> "List/head"
-  ListLast -> "List/last"
-  ListIndexed -> "List/indexed"
-  ListReverse -> "List/reverse"
-  TextShow -> "Text/show"
-  TextReplace -> "Text/replace"
-  Bool -> "Bool"
-  Optional -> "Optional"
-  DhallNone -> "None"
-  Natural -> "Natural"
-  Integer -> "Integer"
-  Double -> "Double"
-  Text -> "Text"
-  List -> "List"
-  Date -> "Date"
-  Time -> "Time"
-  TimeZone -> "TimeZone"
+binary.encodeBuiltin =
+  use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
+  cases
+    NaturalBuild -> "Natural/build"
+    NaturalFold -> "Natural/fold"
+    NaturalIsZero -> "Natural/isZero"
+    NaturalEven -> "Natural/even"
+    NaturalOdd -> "Natural/odd"
+    NaturalToInteger -> "Natural/toInteger"
+    NaturalShow -> "Natural/show"
+    NaturalSubtract -> "Natural/subtract"
+    IntegerToDouble -> "Integer/toDouble"
+    IntegerShow -> "Integer/show"
+    IntegerNegate -> "Integer/negate"
+    IntegerClamp -> "Integer/clamp"
+    DoubleShow -> "Double/show"
+    ListBuild -> "List/build"
+    ListFold -> "List/fold"
+    ListLength -> "List/length"
+    ListHead -> "List/head"
+    ListLast -> "List/last"
+    ListIndexed -> "List/indexed"
+    ListReverse -> "List/reverse"
+    TextShow -> "Text/show"
+    TextReplace -> "Text/replace"
+    Bool -> "Bool"
+    Optional -> "Optional"
+    DhallNone -> "None"
+    Natural -> "Natural"
+    Integer -> "Integer"
+    Double -> "Double"
+    Text -> "Text"
+    List -> "List"
+    Date -> "Date"
+    Time -> "Time"
+    TimeZone -> "TimeZone"
 
 binary.encodeConstant : Constant -> Text
 binary.encodeConstant = cases
@@ -157,10 +163,10 @@ binary.encode expression =
     Annotation t0 T0 -> TList [ TPosInt 26, encode t0, encode T0]
     With e0 ks v0 -> TList [ TPosInt 29, encode e0, TList (List.map TString (Nonempty.toList ks)), encode v0]
     Completion T0 r0 -> TList [TPosInt 3, TPosInt 13, encode T0, encode r0]
-    DateLiteral (Date.Date y m d) -> TList [TPosInt 30, TPosInt y, TPosInt m, TPosInt d]
-    TimeLiteral (Time.Time h m s p) ->
+    DateLiteral (Date y m d) -> TList [TPosInt 30, TPosInt y, TPosInt m, TPosInt d]
+    TimeLiteral (Time h m s p) ->
       TList [TPosInt 31, TPosInt h, TPosInt m, TTagged 4 (TList [if p == 0 then TPosInt 0 else TNegInt (Nat.decrement p), TPosInt s])]
-    TimeZoneLiteral (TimeZone.TimeZone minutes) ->
+    TimeZoneLiteral (TimeZone minutes) ->
       positive = minutes Int.>= +0
       absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
       TList [TPosInt 32, TBool positive, TPosInt (absMin / 60), TPosInt (Nat.mod absMin 60)]
@@ -226,3 +232,420 @@ binary.Term.internal.majorTypeIntArg mode = cases
   value | value <= 0xFFFF -> Bytes.fromList [(Nat.shiftLeft mode 5) + 25] Bytes.++ (Bytes.encodeNat16be value)
   value | value <= 0xFFFFFFFF -> Bytes.fromList [(Nat.shiftLeft mode 5) + 26] Bytes.++ (Bytes.encodeNat32be value)
   value -> Bytes.fromList [(Nat.shiftLeft mode 5) + 27] Bytes.++ (Bytes.encodeNat64be value)
+
+-- inital byte to (major, additional)
+binary.Term.internal.parseInitialByte: Nat -> (Nat, Nat)
+binary.Term.internal.parseInitialByte n = (Nat.shiftRight n 5, Nat.mod n 32)
+
+-- parser argument from additional and index, return (value, nextIndex)
+binary.Term.internal.readArgument: Bytes -> Nat -> Optional (Nat, Bytes)
+binary.Term.internal.readArgument bytes n =
+  match n with
+    v | v < 24 -> Some (v, bytes)
+    24 -> Optional.map (v -> (v, Bytes.drop 1 bytes)) (Bytes.at 0 bytes)
+    25 -> Bytes.decodeNat16be bytes
+    26 -> Bytes.decodeNat32be bytes
+    27 -> Bytes.decodeNat64be bytes
+
+binary.Term.internal.readFloat: Bytes -> Nat -> Either Text (Term, Bytes)
+binary.Term.internal.readFloat bytes n =
+  bs = Bytes.take n bytes
+  if Bytes.size bs < n
+    then Left "Reached end of bytes while decoding float"
+    else
+      match support.parseFloat bs with
+        Some f -> Right (TFloat bs, Bytes.drop n bytes)
+        None -> Left "Error parsing float"
+
+binary.Term.fromBytes: Bytes -> Either Text Term
+binary.Term.fromBytes bytes =
+  go : Bytes -> Either Text (Term, Bytes)
+  go bytes = match Bytes.at 0 bytes with
+    None -> Left "reached end of bytes during decoding"
+    Some b -> match parseInitialByte b with
+      (0, n) -> match readArgument (Bytes.drop 1 bytes) n with
+        None -> Left "Error while parsing integer"
+        Some (v, bs) -> Right (TPosInt v, bs)
+      (1, n) -> match readArgument (Bytes.drop 1 bytes) n with
+        None -> Left "Error while parsing negative integer"
+        Some (v, bs) -> Right (TNegInt v, bs)
+      (2, n) -> match readArgument (Bytes.drop 1 bytes) n with
+        None -> Left "Error while parsing length of byte array"
+        Some (v, bs) -> Right (TBytes (Bytes.take v bs), Bytes.drop v bs)
+      (3, n) -> match readArgument (Bytes.drop 1 bytes) n with
+        None -> Left "Error while parsing length of text"
+        Some (v, bs) -> match Text.fromUtf8.impl (Bytes.take v bs) with
+          Left (Failure _ err _) -> Left err
+          Right t -> Right (TString t, Bytes.drop v bs)
+      (4, n) -> match readArgument (Bytes.drop 1 bytes) n with
+        None -> Left "Error while parsing length of array"
+        Some (v, bs) ->
+          iterate : Nat -> Either Text ([Term], Bytes) ->{} Either Text ([Term], Bytes)
+          iterate n =
+            cases
+              l@(Left err) -> l
+              Right (list, bs1) ->
+                match go bs1 with
+                  Left err -> Left err
+                  Right (el, nb) -> Right (list :+ el, nb)
+          match List.foldRight iterate (Right ([], bs)) (List.range 0 v) with
+            Left err -> Left err
+            Right (vs, bytes) -> Right (TList vs, bytes)
+      (5, n) -> match readArgument (Bytes.drop 1 bytes) n with
+        None -> Left "Error while parsing length of map"
+        Some (v, bs) ->
+          iterate : Nat -> Either Text ([(Term, Term)], Bytes) ->{} Either Text ([(Term, Term)], Bytes)
+          iterate n =
+            cases
+              l@(Left err) -> l
+              Right (list, bs1) ->
+                match go bs1 with
+                  Left err -> Left err
+                  Right (k, bs2) ->
+                    match go bs2 with
+                      Left err -> Left err
+                      Right (v, bs3) -> Right (list :+ (k, v), bs3)
+          match List.foldRight iterate (Right ([], bs)) (List.range 0 v) with
+            Left err -> Left err
+            Right (vs, bytes) -> Right (TMap vs, bytes)
+      (6, n) -> match readArgument (Bytes.drop 1 bytes) n with
+        None -> Left "Error while parsing negative integer"
+        Some (v, bs) -> match go bs with
+          l@(Left _) -> l
+          Right (t, bs2) -> Right (TTagged v t, bs2)
+      (7, n) ->
+        bs = Bytes.drop 1 bytes
+        match n with
+          v | v < 20 -> Left ("Simple value " Text.++ (Nat.toText v) Text.++ " is undefined")
+          20 -> Right (TBool false, bs)
+          21 -> Right (TBool true, bs)
+          22 -> Right (TNull, bs)
+          25 -> readFloat bs 2
+          26 -> readFloat bs 4
+          27 -> readFloat bs 8
+          v -> Left ("Unexpected simple value " Text.++ (Nat.toText v))
+  match go bytes with
+    Left err -> Left err
+    Right (t, rest) ->
+      if Bytes.size rest > 0
+        then Left "Not all bytes consumed during decoding"
+        else Right t
+
+binary.readBuiltin : Text -> Either Text Expression
+binary.readBuiltin =
+  use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
+  cases
+    "Natural/build" -> Right (Builtin NaturalBuild)
+    "Natural/fold" -> Right (Builtin NaturalFold)
+    "Natural/isZero" -> Right (Builtin NaturalIsZero)
+    "Natural/even" -> Right (Builtin NaturalEven)
+    "Natural/odd" -> Right (Builtin NaturalOdd)
+    "Natural/toInteger" -> Right (Builtin NaturalToInteger)
+    "Natural/show" -> Right (Builtin NaturalShow)
+    "Natural/subtract" -> Right (Builtin NaturalSubtract)
+    "Integer/toDouble" -> Right (Builtin IntegerToDouble)
+    "Integer/show" -> Right (Builtin IntegerShow)
+    "Integer/negate" -> Right (Builtin IntegerNegate)
+    "Integer/clamp" -> Right (Builtin IntegerClamp)
+    "Double/show" -> Right (Builtin DoubleShow)
+    "List/build" -> Right (Builtin ListBuild)
+    "List/fold" -> Right (Builtin ListFold)
+    "List/length" -> Right (Builtin ListLength)
+    "List/head" -> Right (Builtin ListHead)
+    "List/last" -> Right (Builtin ListLast)
+    "List/indexed" -> Right (Builtin ListIndexed)
+    "List/reverse" -> Right (Builtin ListReverse)
+    "Text/show" -> Right (Builtin TextShow)
+    "Text/replace" -> Right (Builtin TextReplace)
+    "Bool" -> Right (Builtin Bool)
+    "Optional" -> Right (Builtin Optional)
+    "None" -> Right (Builtin DhallNone)
+    "Natural" -> Right (Builtin Natural)
+    "Integer" -> Right (Builtin Integer)
+    "Double" -> Right (Builtin Double)
+    "Text" -> Right (Builtin Text)
+    "List" -> Right (Builtin List)
+    "Date" -> Right (Builtin Date)
+    "Time" -> Right (Builtin Time)
+    "TimeZone" -> Right (Builtin TimeZone)
+
+    s -> Left ("Error decoding string that is not a builtin : " Text.++ s)
+
+
+binary.decodeOperator : Nat -> Optional Operator
+binary.decodeOperator = cases
+  0 -> Some Or
+  1 -> Some And
+  2 -> Some Equal
+  3 -> Some NotEqual
+  4 -> Some Plus
+  5 -> Some Times
+  6 -> Some TextAppend
+  7 -> Some ListAppend
+  8 -> Some CombineRecordTerms
+  9 -> Some Prefer
+  10 -> Some CombineRecordTypes
+  11 -> Some Alternative
+  12 -> Some Equivalent
+  _ -> None
+
+binary.decodeNatural : Bytes -> Optional Natural
+binary.decodeNatural bytes =
+  match Text.fromUtf8.impl (Bytes.toBase16 bytes) with
+    Left _ -> None
+    Right t -> Natural.parse t 16
+
+binary.decodeFile : [Term] -> Either Text File
+binary.decodeFile path =
+  go acc = cases
+    [TString f] -> Right (File acc f)
+    ((TString f) +: rest) -> go (f +: acc) rest
+    _ -> Left "Error decoding file"
+  go [] path
+
+binary.decodeTextList : [Term] -> Either Text [Text]
+binary.decodeTextList path =
+  go acc = cases
+    [] -> Right acc
+    ((TString f) +: rest) -> go (f +: acc) rest
+    _ -> Left "Error decoding file"
+  go [] path
+
+binary.removeSelfDescribeTags : Term -> Term
+binary.removeSelfDescribeTags t =
+  go = cases
+    TTagged 55799 t -> go t
+    TTagged n t -> TTagged n (go t)
+    TList terms -> TList (List.map go terms)
+    TMap list -> TMap (List.map (cases (a,b) -> (go a, go b)) list)
+    t -> t
+  go t
+
+binary.decodeTerm : Term -> Either Text Expression
+binary.decodeTerm t =
+  normalized = removeSelfDescribeTags t
+  decode = cases
+    TTagged 55799 t -> decode t
+    TTagged n _ -> Left ("Encountered unknown CBOR tag " Text.++ (Nat.toText n))
+    TString t -> readBuiltin t
+    TList [TString t, TPosInt n] ->
+      if t Text.== "_" then Left "Variable '_' must be encoded as an integer"
+        else Right (Variable t (Natural.fromNat n))
+    TList [TString t, TPosInteger n] ->
+      if t Text.== "_" then Left "Variable '_' must be encoded as an integer"
+        else Right (Variable t n)
+    TPosInt n -> Right (Variable "_" (Natural.fromNat n))
+    TPosInteger n -> Right (Variable "_" n)
+    TList ((TPosInt 0) +: (tf +: rest)) ->
+      if (List.size rest == 0) then Left "Function application needs at least 1 argument"
+        else List.foldLeft (cases
+            l@(Left _) -> 'l
+            Right g -> t -> match decode t with
+              l@(Left _) -> l
+              Right a -> Right (Application g a)) (decode tf) rest
+    TList [(TPosInt 1), tA, tb] -> match (decode tA, decode tb) with
+      (Right a, Right b) -> Right (Lambda "_" a b)
+      (l@(Left _), _) -> l
+      (_,l@(Left _)) -> l
+    TList [TPosInt 1, TString x, tA, tb] -> match (decode tA, decode tb) with
+      (Right a, Right b) ->
+        if x Text.== "_" then Left "Lambda variable '_' must not be encoded explicitely"
+          else Right (Lambda x a b)
+      (l@(Left _), _) -> l
+      (_,l@(Left _)) -> l
+    TList [TPosInt 2, tA, tb] -> match (decode tA, decode tb) with
+      (Right a, Right b) -> Right (Forall "_" a b)
+      (l@(Left _), _) -> l
+      (_,l@(Left _)) -> l
+    TList [TPosInt 2, TString x, tA, tb] -> match (decode tA, decode tb) with
+      (Right a, Right b) ->
+        if x Text.== "_" then Left "Forall variable '_' must not be encoded explicitely"
+          else Right (Forall x a b)
+      (l@(Left _), _) -> l
+      (_,l@(Left _)) -> l
+    TList [TPosInt 3, TPosInt n, tA, tb] -> match (decode tA, decode tb) with
+      (Right a, Right b) -> match decodeOperator n with
+        Some op -> Right (Operator a op b)
+        None ->
+          if n == 13 then Right (Completion a b)
+            else Left (" Error decoding operator for " Text.++ (Nat.toText n))
+      (l@(Left _), _) -> l
+      (_,l@(Left _)) -> l
+    TList [TPosInt 4, ta] -> match decode ta with
+      l@(Left _) -> l
+      Right a -> Right (EmptyList (Application (Builtin List) a))
+    TList [TPosInt 28, ta] -> match decode ta with
+      l@(Left _) -> l
+      Right a -> Right (EmptyList a)
+    TList ((TPosInt 4) +: (TNull +: (head +: rest))) ->
+      decoded = List.map decode (head +: rest)
+      match (List.lefts decoded, List.rights decoded) with
+        ([], h +: t) -> Right (NonEmptyList (h +| t))
+        (h +: _, _) -> Left h
+    TList [TPosInt 5, TNull, t] ->
+      match decode t with
+        l@(Left _) -> l
+        Right e -> Right (DhallSome e)
+    TList [TPosInt 6, t, u] -> match (decode t, decode u) with
+      (Right t1, Right u1) -> Right (Merge t1 u1 None)
+      (l@(Left _), _) -> l
+      (_,l@(Left _)) -> l
+    TList [TPosInt 6, t, u, s] -> match (decode t, decode u, decode s) with
+      (Right t1, Right u1, Right s1) -> Right (Merge t1 u1 (Some s1))
+      (l@(Left _), _, _) -> l
+      (_, l@(Left _), _) -> l
+      (_, _, l@(Left _)) -> l
+    TList [TPosInt 27, t] ->
+      match decode t with
+        l@(Left _) -> l
+        Right e -> Right (ToMap e None)
+    TList [TPosInt 27, t, s] ->
+      match (decode t, decode s) with
+        (Right t1, Right s1) -> Right (ToMap t1 (Some s1))
+        (l@(Left _), _) -> l
+        (_,l@(Left _)) -> l
+    TList [TPosInt n, TMap kvs] | (n == 7) || (n == 8) ->
+      match List.foldLeft (cases
+        l@(Left _) -> 'l
+        Right list -> cases
+          (TString k, v) ->
+            match (decode v) with
+              Right e -> Right (list :+ (k, e))
+              Left err -> Left err
+          (_, _) -> Left "Map key is not a string"
+        ) (Right []) kvs with
+        Left err -> Left err
+        Right list -> Right if n ==7 then RecordType list else RecordLiteral list
+    TList [TPosInt 9, t, TString x] ->
+      match decode t with
+        l@(Left _) -> l
+        Right e -> Right (Field e x)
+    TList [TPosInt 10, t, TList [s]] ->
+      match (decode t, decode s) with
+        (Right t1, Right s1) -> Right (ProjectByType t1 s1)
+        (l@(Left _), _) -> l
+        (_,l@(Left _)) -> l
+    TList ((TPosInt 10) +: (t +: rest)) ->
+      match decode t with
+        l@(Left _) -> l
+        Right e ->
+          match List.foldLeft (cases
+            l@(Left _) -> 'l
+            Right list -> cases
+              TString s -> Right (list :+ s)
+              _ -> Left "labels in projects must be strings") (Right []) rest with
+            Left err -> Left err
+            Right list -> Right (ProjectByLabels e list)
+    TList [TPosInt 11, TMap kvs] ->
+      match List.foldLeft (cases
+        l@(Left _) -> 'l
+        Right list -> cases
+          (TString k, TNull) -> Right (list :+ (k, None))
+          (TString k, v) ->
+            match (decode v) with
+              Right e -> Right (list :+ (k, Some e))
+              Left err -> Left err
+          (_, _) -> Left "Map key is not a string"
+        ) (Right []) kvs with
+        Left err -> Left err
+        Right list -> Right (UnionType list)
+    TBool t -> Right (Builtin if t then True else False)
+    TList [TPosInt 14, t, u, s] -> match (decode t, decode u, decode s) with
+      (Right t1, Right u1, Right s1) -> Right (If t1 u1 s1)
+      (l@(Left _), _, _) -> l
+      (_, l@(Left _), _) -> l
+      (_, _, l@(Left _)) -> l
+    TList [TPosInt 15, TPosInt n] -> Right (NaturalLiteral (Natural.fromNat n))
+    TList [TPosInt 15, TPosInteger n] -> Right (NaturalLiteral n)
+    TList [TPosInt 15, TTagged 2 (TBytes bytes)] -> match decodeNatural bytes with
+      Some n -> Right (NaturalLiteral n)
+      None -> Left "Error parsing Natural"
+    TList [TPosInt 16, TPosInt n] -> Right (IntegerLiteral (Integer.positive (Natural.fromNat n)))
+    TList [TPosInt 16, TPosInteger n] -> Right (IntegerLiteral (Integer.positive n))
+    TList [TPosInt 16, TTagged 2 (TBytes bytes)] -> match decodeNatural bytes with
+      Some n -> Right (IntegerLiteral (Integer.positive n))
+      None -> Left "Error parsing Integer"
+    TList [TPosInt 16, TNegInt n] -> Right (IntegerLiteral (Integer.negative ((Natural.fromNat n) Natural.+ one)))
+    TList [TPosInt 16, TNegInteger n] -> Right (IntegerLiteral (Integer.negative (n Natural.+ one)))
+    TList [TPosInt 16, TTagged 3 (TBytes bytes)] -> match decodeNatural bytes with
+      Some n -> Right (IntegerLiteral (Integer.negative (n Natural.+ one)))
+      None -> Left "Error parsing Integer"
+    TFloat bytes -> match support.parseFloat bytes with
+          Some f -> Right (DoubleLiteral f)
+          None -> Left "Error parsing float"
+    TList ((TPosInt 18) +: rest) ->
+      go acc = cases
+          (TString t +: (e +: rest)) -> match decode e with
+            Left err -> Left err
+            Right f -> go (acc :+ (t, f)) rest
+          [TString t] -> Right (TextLiteral (Chunks acc t))
+      go [] rest
+    TList [TPosInt 19, t] -> Either.mapRight Assert (decode t)
+  --[24, null, 0, 0, null, "foo:bar@baz:123", "path1", "path2", null]
+
+    -- TList (TPosInt 24 +: (digestOrNull +: ((TPosInt mode) +: ((TPosInt importType) +: rest)))) | (mode <= 2) -> Left "***"
+
+    TList (TPosInt 24 +: (digestOrNull +: ((TPosInt mode) +: ((TPosInt importType) +: rest)))) | (mode <= 2) ->
+      importMode = match mode with
+        0 -> Code
+        1 -> RawText
+        2 -> Location
+      digest = match digestOrNull with
+        TBytes bytes -> Some (SHA256Digest (Bytes.drop 2 bytes))
+        _ -> None
+      match importType with
+        n | n<2 ->
+          scheme = if n == 0 then HTTP else HTTPS
+          match rest with headers +: ((TString authority) +: (filepath :+ query)) ->
+            hs = match headers with
+              TNull -> Right None
+              e -> Either.mapRight Some (decode headers)
+            match (hs, decodeFile filepath, query) with
+              (Right h, Right f, TString q) -> Right (Import (Remote (URL scheme authority f (Some q)) h) importMode digest)
+              (Right h, Right f, _) -> Right (Import (Remote (URL scheme authority f None) h) importMode digest)
+              (Left err, _, _) -> Left err
+              (_, Left err, _) -> Left err
+        n | n < 6 ->
+          prefix = match n with
+            2 -> Absolute
+            3 -> Here
+            4 -> Parent
+            5 -> Home
+          Either.mapRight (f -> Import (Path prefix f) importMode digest) (decodeFile rest)
+        6 -> match rest with
+          [TString v] -> Right (Import (Env v) importMode digest)
+          _ -> Left "Error decoding env variable"
+        7 -> Right (Import Missing Code None)
+    TList ((TPosInt 25) +: (rest :+ z)) ->
+      go = cases
+        l@(Left _) -> 'l
+        Right acc -> cases
+          [] -> (Right acc)
+          (((start :+ TString x) :+ TNull) :+ a) -> match decode a with
+            l@(Left _) -> l
+            Right a1 -> go (Right (Let x None a1 acc)) start
+          (((start :+ TString x) :+ b) :+ a) -> match (decode a, decode b) with
+            (Right a1, Right b1) -> go (Right (Let x (Some b1) a1 acc)) start
+            (l@(Left _), _) -> l
+            (_, l@(Left _)) -> l
+          _ -> Left "Error decoding let expression"
+      go (decode z) rest
+    TList [TPosInt 26, t, s] ->
+      match (decode t, decode s) with
+        (Right t1, Right s1) -> Right (Annotation t1 s1)
+        (l@(Left _), _) -> l
+        (_,l@(Left _)) -> l
+    TList [TPosInt 29, e, TList ((TString s) +: rest), v] ->
+      match (decode e, decode v, decodeTextList rest) with
+        (Right e1, Right v1, Right list) -> Right (With e1 (s +| list) v1)
+        (l@(Left _), _, _) -> l
+        (_, l@(Left _), _) -> l
+        (_, _, Left err) -> Left err
+    TList [TPosInt 30, TPosInt y, TPosInt m, TPosInt d] -> Right (DateLiteral (Date.Date y m d))
+    TList [TPosInt 31, TPosInt h, TPosInt m, TTagged 4 (TList [TPosInt 0, TPosInt s])] -> Right (TimeLiteral (Time h m s 0))
+    TList [TPosInt 31, TPosInt h, TPosInt m, TTagged 4 (TList [TNegInt p, TPosInt s])] -> Right (TimeLiteral (Time h m s (p + 1)))
+    TList [TPosInt 32, TBool positive, TPosInt absHour, TPosInt absMin] ->
+      minutes = Nat.toInt (absHour * 60 + absMin)
+      Right (TimeZoneLiteral (TimeZone.TimeZone (if positive then minutes else Int.negate minutes)))
+    _ -> Left ("Error decoding term")
+  decode normalized

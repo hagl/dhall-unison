@@ -8,7 +8,7 @@ This namespace contains some types and functions that would ideally provided by 
 
 # Single and Half float encodings
 
-The CBOR binary encoding requires that floats are stored in the shortest encoding that preserves the value. 
+The CBOR binary encoding requires that floats are stored in the shortest encoding that preserves the value.
 
 {encodeFloat} will encode a float into the appropriate 16-bit, 32-bit or 64-bit IEEE 754 representation.
 
@@ -16,7 +16,7 @@ The CBOR binary encoding requires that floats are stored in the shortest encodin
 
 
 support.encodeFloat : Float -> Bytes
-support.encodeFloat f = 
+support.encodeFloat f =
   doubleRepresentation = Float.toRepresentation f
   -- bit 0
   sign = (Nat.shiftRight doubleRepresentation 63)
@@ -24,8 +24,8 @@ support.encodeFloat f =
   unbiasedExponent = Nat.shiftRight (Nat.shiftLeft doubleRepresentation 1) 53
   fractionBits = Nat.shiftRight (Nat.shiftLeft doubleRepresentation 12) 12
   -- special cases
-  -- Debug.watch ("Exponent: " ++ (Nat.toText unbiasedExponent) ++ "\nFractionBits: " ++ (Nat.toText fractionBits)) match (unbiasedExponent, fractionBits) with 
-  match (unbiasedExponent, fractionBits) with 
+  -- Debug.watch ("Exponent: " ++ (Nat.toText unbiasedExponent) ++ "\nFractionBits: " ++ (Nat.toText fractionBits)) match (unbiasedExponent, fractionBits) with
+  match (unbiasedExponent, fractionBits) with
     (0, 0) -> -- signed null => HALF
       Bytes.encodeNat16be (Nat.shiftLeft sign 15)
     (0, _) -> -- subnormals => Double
@@ -40,12 +40,12 @@ support.encodeFloat f =
       if ((exponent Int.>= -14) && (exponent Int.<= +15) && ((Nat.shiftLeft (Nat.shiftRight fractionBits 42) 42) == fractionBits))
         then -- fits in HALF
           halfUnbiasedExponent = Int.truncate0 (exponent + +15)
-          halfFractionBits = Nat.shiftRight fractionBits 42           
+          halfFractionBits = Nat.shiftRight fractionBits 42
           Bytes.encodeNat16be ((Nat.shiftLeft sign 15) + (Nat.shiftLeft halfUnbiasedExponent 10) + halfFractionBits)
         else if ((exponent Int.>= -126) && (exponent Int.<= +127) && ((Nat.shiftLeft (Nat.shiftRight fractionBits 29) 29) == fractionBits))
           then -- fits in single precision float
             singleUnbiasedExponent = Int.truncate0 (exponent + +127)
-            singleFractionBits = Nat.shiftRight fractionBits 29       
+            singleFractionBits = Nat.shiftRight fractionBits 29
             Bytes.encodeNat32be ((Nat.shiftLeft sign 31) + (Nat.shiftLeft singleUnbiasedExponent 23) + singleFractionBits)
           else
             Bytes.encodeNat64be doubleRepresentation
@@ -60,9 +60,9 @@ support.parseHalfFloat bytes =
   decodeNat : Nat -> Float
   decodeNat n =
     sign = Nat.shiftRight n 15
-    unbiasedExponent = Nat.shiftRight (Nat.shiftLeft n 1) 11
-    fractionBits = Nat.shiftRight (Nat.shiftLeft n 6) 6
-    match (unbiasedExponent, fractionBits) with 
+    unbiasedExponent = Nat.shiftRight (Nat.shiftLeft n 49) 59
+    fractionBits = Nat.shiftRight (Nat.shiftLeft n 54) 54
+    match (unbiasedExponent, fractionBits) with
       (0, 0) -> -- signed null
         if sign == 1 then -0.0 else 0.0
       (0, _) -> -- subnormals => Double
@@ -74,7 +74,7 @@ support.parseHalfFloat bytes =
         if sign == 1 then negInfinity else infinity
       (0x7ff, _) -> -- NaN => Half
         nan
-      (_, _) -> 
+      (_, _) ->
         doubleUnbiasedExponent = Nat.shiftLeft (unbiasedExponent + 1008) 52 -- 1008 = (- 15 + 1023)
         doubleFractionBits = Nat.shiftLeft fractionBits 42
         Float.fromRepresentation ((Nat.shiftLeft sign 63) + doubleUnbiasedExponent + doubleFractionBits)
@@ -88,7 +88,7 @@ support.parseSingleFloat bytes =
     sign = Nat.shiftRight n 31
     unbiasedExponent = Nat.shiftRight (Nat.shiftLeft n 33) 56
     fractionBits = Nat.shiftRight (Nat.shiftLeft n 41) 41
-    match (unbiasedExponent, fractionBits) with 
+    match (unbiasedExponent, fractionBits) with
       (0, 0) -> -- signed null
         if sign == 1 then -0.0 else 0.0
       (0, _) -> -- subnormals => Double
@@ -100,7 +100,7 @@ support.parseSingleFloat bytes =
         if sign == 1 then negInfinity else infinity
       (0x7ff, _) -> -- NaN
         nan
-      (_, _) -> 
+      (_, _) ->
         doubleUnbiasedExponent = Nat.shiftLeft (unbiasedExponent + 896) 52  -- 896 = (- 127 + 1023)
         doubleFractionBits = Nat.shiftLeft fractionBits 29
         Float.fromRepresentation ((Nat.shiftLeft sign 63) + doubleUnbiasedExponent + doubleFractionBits)
@@ -116,16 +116,16 @@ support.parseFloat bytes = match Bytes.size bytes with
 
 -- shift 10 bit fraction to the left until the leading bit is removed, return shifted fraction and number of shifts
 support.findFractionExponentHalf : Nat -> (Nat, Nat)
-support.findFractionExponentHalf = findFractionExponent 54 
+support.findFractionExponentHalf = findFractionExponent 54
 
 support.findFractionExponentSingle : Nat -> (Nat, Nat)
 support.findFractionExponentSingle = findFractionExponent 41
 
 support.findFractionExponent : Nat -> Nat -> (Nat, Nat)
-support.findFractionExponent prefix n = 
+support.findFractionExponent prefix n =
   p1 = prefix + 1
-  go : Nat -> Nat -> (Nat, Nat)  
-  go n c = 
+  go : Nat -> Nat -> (Nat, Nat)
+  go n c =
     n' = Nat.shiftRight (Nat.shiftLeft n p1) p1
     if (n' Nat.!=  n
     then (Nat.shiftLeft n' 1, c + 1)
@@ -137,16 +137,16 @@ use test
 test> support.findFractionExponentHalf.tests.ex1 = check((findFractionExponentHalf 0x03FF) === (0x03FE, 1))
 
 support.stableEncoding: Nat -> Boolean
-support.stableEncoding n = 
+support.stableEncoding n =
   f = Float.fromRepresentation n
   enc = encodeFloat f
   ddenc = Optional.map encodeFloat (parseFloat enc)
-  if ddenc === (Some enc) then 
+  if ddenc === (Some enc) then
     true
   else
     Debug.watch ("missmatch for n = " ++ (Nat.toText n)) false
 
-test> support.parseFloat.test.props1 = 
+test> support.parseFloat.test.props1 =
   runs 1000 '(expect (!gen.nat |> stableEncoding))
 test> support.parseFloat.test.ex2 = check (stableEncoding 0xbfc01000)
 
@@ -160,7 +160,7 @@ support.Integer.negative n = if n == zero then Integer false zero else Integer t
 
 support.Integer.negate : Integer -> Integer
 support.Integer.negate = cases
-  (Integer sign n) 
+  (Integer sign n)
     | n == zero -> (Integer false zero)
     | otherwise -> (Integer (not sign) n)
 

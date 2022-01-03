@@ -58,6 +58,12 @@ testsuite.encodeExpression expression =
   encoded = encode expression
   Term.toBytes encoded
 
+testsuite.printOptional : Optional Expression -> Text
+testsuite.printOptional optEx = Optional.fold '("None") printExpression optEx
+
+testsuite.printEither : Either Text Expression -> Text
+testsuite.printEither = Either.fold (t -> "Left: " ++ t) printExpression
+
 testsuite.parseSuccessTest : Text -> Text -> Boolean
 testsuite.parseSuccessTest testDir name =
   use Text
@@ -100,9 +106,8 @@ testsuite.alphaNormalizationTest testDir name =
   result = bytes === checkBytes
   if (result) then true
   else
-    print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
-    printLine("Normalized:\n" ++ (print normalized))
-    printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+    printLine("Normalized:\n" ++ (printOptional normalized))
+    printLine("Correct:\n" ++ (printEither (parseTestcase checkPath)))
     false
 
 testsuite.normalizationTest : Text -> Text -> Boolean
@@ -126,9 +131,8 @@ testsuite.normalizationTest testDir name =
   result = bytes === checkBytes
   if (result) then true
   else
-    print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
-    printLine("Normalized:\n" ++ (print normalized))
-    printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+    printLine("Normalized:\n" ++ (printOptional normalized))
+    printLine("Correct:\n" ++ (printEither (parseTestcase checkPath)))
     false
 
 testsuite.typeInferenceTest : Text -> Text -> Boolean
@@ -138,7 +142,6 @@ testsuite.typeInferenceTest testDir name =
   dirs = List.reverse (utils.splitOn "/" (testDir))
   use type_inference
   use .dhall.trunk.utils
-  print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
 
   resolvedOpt =
     if name == "prelude" -- prelude test takes multiple hours
@@ -168,8 +171,8 @@ testsuite.typeInferenceTest testDir name =
       result = bytes === checkBytes
       if (result) then true
       else
-        printLine("Type:\n" ++ (print inferredType))
-        printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+        printLine("Type:\n" ++ (printOptional inferredType))
+        printLine("Correct:\n" ++ (printEither (parseTestcase checkPath)))
         false
 
 testsuite.typeInferenceFailureTest : Text -> Text -> Boolean
@@ -190,7 +193,6 @@ testsuite.importTest testDir name =
   dirs =   Debug.watch name (List.reverse (utils.splitOn "/" (testDir)))
   use type_inference
   use .dhall.trunk.utils
-  print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
   normalizedExpressionA = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")) with
     Left err -> Debug.watch ("Parse error : " ++ err) None
     Right parsed ->
@@ -208,8 +210,8 @@ testsuite.importTest testDir name =
   if normalizedExpressionA === normalizedExpressionB
     then true
     else
-      printLine("Actual:\n" ++ (print normalizedExpressionA))
-      printLine("Correct:\n" ++ (print normalizedExpressionB))
+      printLine("Actual:\n" ++ (printOptional normalizedExpressionA))
+      printLine("Correct:\n" ++ (printOptional normalizedExpressionB))
       false
 
 testsuite.semanticHashTest : Text -> Text -> Boolean
@@ -234,6 +236,47 @@ testsuite.semanticHashTest testDir name =
   success = Optional.map ((Text.==) checkHash) hash === Some true
   success
 
+testsuite.binaryDecodeSuccessTest : Text -> Text -> Boolean
+testsuite.binaryDecodeSuccessTest testDir name =
+  use Text
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhallb")
+  inputBytes =
+    bracket
+      '(openFile (testPath) Read)
+      closeFile
+      (fileHandle -> (getBytes fileHandle (base.io.getFileSize testPath)))
+  decodedExpression = match binary.Term.fromBytes inputBytes with
+    Left err ->
+      printLine ("Decoding error: " ++ err)
+      Left err
+    Right decoded -> binary.decodeTerm decoded
+  checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")
+  checkExpression = parseTestcase checkPath
+  if decodedExpression === checkExpression
+    then true
+    else
+      printLine("Actual:\n" ++ (printEither decodedExpression))
+      printLine("Correct:\n" ++ (printEither checkExpression))
+      false
+
+testsuite.binaryDecodeFailureTest : Text -> Text -> Boolean
+testsuite.binaryDecodeFailureTest testDir name =
+  use Text
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhallb")
+  inputBytes =
+    bracket
+      '(openFile (testPath) Read)
+      closeFile
+      (fileHandle -> (getBytes fileHandle (base.io.getFileSize testPath)))
+  decodedExpression = match binary.Term.fromBytes inputBytes with
+    Left err ->
+      Left err
+    Right decoded -> binary.decodeTerm decoded
+  if Either.isLeft decodedExpression
+    then true
+    else
+      printLine("Expected decoding error but got :\n" ++ (printEither decodedExpression))
+      false
 
 {{ {perfTest} measures the time needed to parse the type of the Dhall prelude, which is around 700 lines of Dhall code.
 
@@ -270,12 +313,14 @@ testsuite.runTests path =
         runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
         runTestsRecursive  ("./dhall-lang/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
         runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest,
-        -- runTestsRecursive  ("./dhall-lang/tests/type-inference/success/unit") "A.dhall" typeInferenceTest,
+        -- -- runTestsRecursive  ("./dhall-lang/tests/type-inference/success/unit") "A.dhall" typeInferenceTest,
         runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest,
         runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
-        runTestsRecursive  ("./dhall-lang/tests/import/success/unit") "A.dhall" importTest,
+        -- runTestsRecursive  ("./dhall-lang/tests/import/success/unit") "A.dhall" importTest,
         runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" importTest,
         runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest,
+        runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
+        runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,
       ]))
 
 {{ {runTestSuite} will run the [Dhall acceptance tests](https://github.com/dhall-lang/dhall-lang/tree/master/tests)

@@ -1,8 +1,11 @@
+use support Date Time TimeZone
+use support.Date Date
+use support.Time Time
+use support.TimeZone TimeZone
 use syntax
 use syntax.TextLiteral Chunks
 use syntax.ImportMode Code RawText Location
 use syntax.Constant Type Kind Sort
-use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
 use syntax Expression
 use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend CombineRecordTerms Prefer CombineRecordTypes Alternative Equivalent Some
@@ -79,9 +82,9 @@ utils.printExpression = cases
   DhallSome a0 -> "Some " ++ (printExpression a0)
   Builtin b -> printBuiltin b
   Constant c -> printConstant c
-  DateLiteral (Date.Date y m d) -> (Nat.toText y) ++ "-" ++ (Nat.toText m) ++ "-" ++ (Nat.toText d)
-  TimeLiteral (Time.Time h m s p) -> (Nat.toText h) ++ ":" ++ (Nat.toText m) ++ ":" ++ (Nat.toText (s / (pow 10  p)))
-  TimeZoneLiteral (TimeZone.TimeZone minutes) ->
+  DateLiteral (Date y m d) -> (Nat.toText y) ++ "-" ++ (Nat.toText m) ++ "-" ++ (Nat.toText d)
+  TimeLiteral (Time h m s p) -> (Nat.toText h) ++ ":" ++ (Nat.toText m) ++ ":" ++ (Nat.toText (s / (pow 10  p)))
+  TimeZoneLiteral (TimeZone minutes) ->
       positive = minutes Int.>= +0
       absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
       (if positive then "+" else "-") ++ (Nat.toText (absMin / 60)) ++ ":" ++ (Nat.toText (Nat.mod absMin 60))
@@ -126,42 +129,44 @@ utils.printConstant = cases
   Sort -> "Sort"
 
 utils.printBuiltin : Builtin -> Text
-utils.printBuiltin = cases
-  NaturalBuild -> "Natural/build"
-  NaturalFold -> "Natural/fold"
-  NaturalIsZero -> "Natural/isZero"
-  NaturalEven -> "Natural/even"
-  NaturalOdd -> "Natural/odd"
-  NaturalToInteger -> "Natural/toInteger"
-  NaturalShow -> "Natural/show"
-  NaturalSubtract -> "Natural/subtract"
-  IntegerToDouble -> "Integer/toDouble"
-  IntegerShow -> "Integer/show"
-  IntegerNegate -> "Integer/negate"
-  IntegerClamp -> "Integer/clamp"
-  DoubleShow -> "Double/show"
-  ListBuild -> "List/build"
-  ListFold -> "List/fold"
-  ListLength -> "List/length"
-  ListHead -> "List/head"
-  ListLast -> "List/last"
-  ListIndexed -> "List/indexed"
-  ListReverse -> "List/reverse"
-  TextShow -> "Text/show"
-  TextReplace -> "Text/replace"
-  Bool -> "Bool"
-  Optional -> "Optional"
-  Natural -> "Natural"
-  Integer -> "Integer"
-  Double -> "Double"
-  Text -> "Text"
-  List -> "List"
-  True -> "True"
-  False -> "False"
-  DhallNone -> "None"
-  Date -> "Date"
-  Time -> "Time"
-  TimeZone -> "TimeZone"
+utils.printBuiltin =
+  use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
+  cases
+    NaturalBuild -> "Natural/build"
+    NaturalFold -> "Natural/fold"
+    NaturalIsZero -> "Natural/isZero"
+    NaturalEven -> "Natural/even"
+    NaturalOdd -> "Natural/odd"
+    NaturalToInteger -> "Natural/toInteger"
+    NaturalShow -> "Natural/show"
+    NaturalSubtract -> "Natural/subtract"
+    IntegerToDouble -> "Integer/toDouble"
+    IntegerShow -> "Integer/show"
+    IntegerNegate -> "Integer/negate"
+    IntegerClamp -> "Integer/clamp"
+    DoubleShow -> "Double/show"
+    ListBuild -> "List/build"
+    ListFold -> "List/fold"
+    ListLength -> "List/length"
+    ListHead -> "List/head"
+    ListLast -> "List/last"
+    ListIndexed -> "List/indexed"
+    ListReverse -> "List/reverse"
+    TextShow -> "Text/show"
+    TextReplace -> "Text/replace"
+    Bool -> "Bool"
+    Optional -> "Optional"
+    Natural -> "Natural"
+    Integer -> "Integer"
+    Double -> "Double"
+    Text -> "Text"
+    List -> "List"
+    True -> "True"
+    False -> "False"
+    DhallNone -> "None"
+    Date -> "Date"
+    Time -> "Time"
+    TimeZone -> "TimeZone"
 
 utils.printOperator : Operator -> Text
 utils.printOperator = cases

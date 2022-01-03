@@ -1,5 +1,5 @@
 use syntax TextLiteral
-use syntax.TextLiteral Chunks
+use syntax.TextLiteral Chunks <>
 use syntax Expression
 use syntax.Expression Constant Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin
 use syntax.Operator Or Plus TextAppend ListAppend And CombineRecordTerms Prefer CombineRecordTypes Times Equal NotEqual Equivalent Alternative
