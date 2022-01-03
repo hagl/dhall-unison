@@ -368,6 +368,9 @@ binary.readBuiltin =
     "Date" -> Right (Builtin Date)
     "Time" -> Right (Builtin Time)
     "TimeZone" -> Right (Builtin TimeZone)
+    "Type" -> Right (Constant Type)
+    "Kind" -> Right (Constant Kind)
+    "Sort" -> Right (Constant Sort)
 
     s -> Left ("Error decoding string that is not a builtin : " Text.++ s)
 

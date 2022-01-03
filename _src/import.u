@@ -82,7 +82,6 @@ import.Cache.impl.load p = cases SHA256Digest bytes ->
           (fileHandle -> getBytes fileHandle (base.io.getFileSize path)))
       |> Either.mapLeft cases Failure _ t _ -> t) with
       Left err ->
-        Debug.watch ("Cache miss: " ++ (FilePath.toText path))
         None
       Right encoded ->
         hashed = base.crypto.hashBytes HashAlgorithm.Sha2_256 encoded
@@ -90,19 +89,20 @@ import.Cache.impl.load p = cases SHA256Digest bytes ->
           then match binary.Term.fromBytes encoded with
             Left err ->
               Debug.watch ("Decoding error for cached file: "  ++ (FilePath.toText path) ++ "\n" ++ err)
-              None
+                None
             Right decoded -> match binary.decodeTerm decoded with
               Left err ->
                 Debug.watch ("Decoding error for cached file: "  ++ (FilePath.toText path) ++ "\n" ++ err)
-                None
-              Right expression -> Some expression
+                  None
+              Right expression ->
+                Some expression
           else
             Debug.watch ("File loaded from cache has wrong hash: "  ++ (FilePath.toText path))
-            None
+              None
 
 
 
-import.withoutCache: (a ->{import.Cache} b) -> a -> b
+import.withoutCache: (a ->{Cache, IO, Exception} b) -> a ->{IO, Exception} b
 import.withoutCache f a =
   handler = cases
     {cacheLoad digest -> resume} ->
@@ -112,7 +112,7 @@ import.withoutCache f a =
     {res} -> res
   handle f a with handler
 
-import.readOnlyCache: FilePath -> (a ->{import.Cache} b) -> a -> b
+import.readOnlyCache: FilePath -> (a ->{Cache, IO, Exception} b) -> a ->{IO, Exception} b
 import.readOnlyCache p f a =
   handler = cases
     {cacheLoad digest -> resume} ->
@@ -239,24 +239,27 @@ import.resolveImports base previous cache expression =
       if List.contains chained previous
         then Left ("Cyclic imports: " ++ (printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (printImportType it)) previous)))
         else
-          match Map.get (chained, importMode) cache with
+          match Optional.flatMap cacheLoad oDigest with
             Optional.Some expression -> handle resume expression with handler cache
             None ->
-              result = match chained with
-                Remote url headers -> Left "HTTP(S) not yet supported"
-                Env text -> Left "Envirnoment variables not yet supported"
-                Missing -> match importMode with
-                  Location -> Right (missingLocation, cache)
-                  _ -> Left "missing import" -- Right (Import Missing importMode None, cache)
-                Path prefix file -> match importMode with
-                  Location -> Right (localLocation prefix file, cache)
-                  RawText -> Either.mapRight (t -> (TextLiteral (Chunks [] t), , cache)) (loadLocalFile prefix file)
-                  Code ->
-                    verifyAndResolve prefix file oDigest cache previous
-              match result with
-                -- TODO check digest etc.
-                Right (expression, newCache) -> handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
-                Left err -> Left err
+              match Map.get (chained, importMode) cache with
+                Optional.Some expression -> handle resume expression with handler cache
+                None ->
+                  result = match chained with
+                    Remote url headers -> Left "HTTP(S) not yet supported"
+                    Env text -> Left "Envirnoment variables not yet supported"
+                    Missing -> match importMode with
+                      Location -> Right (missingLocation, cache)
+                      _ -> Left "missing import" -- Right (Import Missing importMode None, cache)
+                    Path prefix file -> match importMode with
+                      Location -> Right (localLocation prefix file, cache)
+                      RawText -> Either.mapRight (t -> (TextLiteral (Chunks [] t), , cache)) (loadLocalFile prefix file)
+                      Code ->
+                        verifyAndResolve prefix file oDigest cache previous
+                  match result with
+                    -- TODO check digest etc.
+                    Right (expression, newCache) -> handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
+                    Left err -> Left err
     {Import.tryResolve exp -> resume} ->
       match resolveImports base previous cache exp with
         Right (exp, newCache) -> handle resume (Some exp) with handler newCache
