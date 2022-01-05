@@ -214,6 +214,7 @@ testsuite.importTest testDir name =
       printLine("Correct:\n" ++ (printOptional normalizedExpressionB))
       false
 
+
 testsuite.semanticHashTest : Text -> Text -> Boolean
 testsuite.semanticHashTest testDir name =
   use Text
@@ -301,40 +302,64 @@ testsuite.perfTest _ =
         Right _ -> "Parsed successfully in " ++ (Int.toText duration) ++ "μs"
       printLine msg
 
+testsuite.importTest2 : Text -> Text -> Boolean
+testsuite.importTest2 testDir name =
+  use Text
+  dirs = List.reverse (utils.splitOn "/" (testDir))
+  use type_inference
+  use .dhall.trunk.utils
+  normalizedExpressionA = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")) with
+    Left err -> Debug.watch ("Parse error : " ++ err) None
+    Right parsed ->
+      match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
+        Left msg -> Debug.watch ("Import error : " ++ msg) None
+        Right resolved -> Optional.Some (betaNormalize resolved)
+
+  normalizedExpressionB = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")) with
+    Left err -> Debug.watch ("Parse error : " ++ err) None
+    Right parsed ->
+      match import.resolve (Path Here (File dirs (name ++ "B.dhall"))) parsed with
+        Left msg -> Debug.watch ("Import error : " ++ msg) None
+        Right resolved -> Optional.Some (betaNormalize resolved)
+
+  if normalizedExpressionA === normalizedExpressionB
+    then true
+    else
+      printLine("Actual:\n" ++ (printOptional normalizedExpressionA))
+      printLine("Correct:\n" ++ (printOptional normalizedExpressionB))
+      false
+
+
 testsuite.runTests : Text ->{IO, Exception} ()
 testsuite.runTests path =
   origDirectory = !io.getCurrentDirectory
+  withDefaultLoader : ('{RemoteLoader, EnvLoader, Cache, LocalLoader, g} b) -> {g, Exception, IO} b
+  withDefaultLoader f =
+    import.mapEnvironment Map.empty
+      '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
+          '(import.withoutCache f)))
+
   bracket
     '(io.setCurrentDirectory (FilePath (path ++ "/..")))
     '(io.setCurrentDirectory origDirectory)
-    '(
-      -- match import.mapEnvironment Map.empty '(import.defaultHeaderRemoteLoader None '(Left "XXX")) () with Right remoteLoader ->
-      match import.defaultHeaderRemoteLoader None '(Left "XXX") with Right remoteLoader ->
-
+    '(match import.defaultHeaderRemoteLoader Map.empty with remoteLoader ->
         printTestStatus path (List.foldLeft updateResults (0,0) [
-          runTestsRecursive  ("./dhall-lang/tests/parser/success") "A.dhall" parseSuccessTest,
-          runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
-          runTestsRecursive  ("./dhall-lang/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
-          remoteLoader '(
-            import.mapEnvironment Map.empty '(
-              (import.withoutCache
-                '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest) ())) ())' (),
-          remoteLoader '(
-            import.mapEnvironment Map.empty '(
-              (import.withoutCache
-                '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest) ())) ())' (),
-          runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
-          remoteLoader '(
-            import.mapEnvironment (Map.fromList [("DHALL_TEST_VAR", "6 * 7")]) '(
-              (import.readOnlyCache (FilePath (path ++ "/tests/import/cache/dhall"))
-                '(runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" importTest) ())) ())' (),
-          runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhallb" importTest2,
-          remoteLoader '(
-            import.mapEnvironment Map.empty '(
-              (import.withoutCache
-                '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest) ())) ())' (),
-          runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
-          runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,
+          -- runTestsRecursive  ("./dhall-lang/tests/parser/success") "A.dhall" parseSuccessTest,
+          -- runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
+          -- runTestsRecursive  ("./dhall-lang/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
+          withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
+          -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),
+          -- runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
+          -- import.mapEnvironment (Map.fromList [("DHALL_TEST_VAR", "6 * 7")]) '(
+          --   import.defaultFileLoader '(
+          --     remoteLoader '(
+          --       (import.readOnlyCache (FilePath (path ++ "/tests/import/cache/dhall"))
+          --         '(runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" importTest))))),
+                -- '(runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" importTest) ())) ())' (),
+          -- runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhallb" importTest2,
+          -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest),
+          -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
+          -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,
         ]))
   ()
 
