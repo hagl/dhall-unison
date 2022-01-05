@@ -15,9 +15,10 @@ To install the latest version in your Unison codebase use the following ucm comm
 pull https://github.com/hagl/dhall-unison:.dhall.releases._v2 .external.dhall.v2
 ```
 
-If you are interested in the sources you will also need `stew.parser`:
+If you are interested in the sources you will also need `stew.parser` and `stew.http`:
 ```
-.> pull git@github.com:stew/codebase:.parser.trunk
+.> pull git@github.com:stew/codebase:.parser.trunk .external.stew.parser
+.> pull git@github.com:unisonweb/share.git:.stew.http .external.stew.http
 ```
 
 ## Usage
@@ -94,7 +95,7 @@ Right
     "/home/jane" "/home/jane/.ssh/id_ed25519.pub" "/home/jane/.ssh/id_ed25519" ]
 ```
 
-This example is also available in the Unison doc `external.dhall.trunk.README`.
+This example is also available online on [Unison Share][unison-share-hagl-dhall]
 
 ## Status
 
@@ -138,6 +139,7 @@ This project is based on and uses code from the projects
 - [dhall-lang][dhall-lang-project] ([3-Clause BSD License][dhall-lang-license])
 - [dhall-haskell][dhall-haskell] ([3-Clause BSD License][dhall-lang-license])
 - [stew/parser][stew-parser]
+- [stew/http][stew-http]
 
 [license]: https://github.com/hagl/dhall-unison/blob/main/LICENSE
 [unison]: https://www.unisonweb.org/
@@ -148,4 +150,6 @@ This project is based on and uses code from the projects
 [dhall-haskell-license]: https://github.com/dhall-lang/dhall-haskell/blob/main/LICENSE
 [dhall-tests]: https://github.com/dhall-lang/dhall-lang/tree/master/tests
 [stew-parser]: https://share.unison-lang.org/latest/namespaces/stew/parser
+[stew-http]: https://share.unison-lang.org/latest/namespaces/stew/http
 [hagl]: https://twitter.com/hagl
+[unison-share-hagl-dhall]: https://share.unison-lang.org/latest/terms/hagl/dhall/README
