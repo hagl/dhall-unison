@@ -2,6 +2,8 @@ use syntax Expression
 use binary
 use binary Term
 use syntax.Constant
+use syntax.Expression EmptyList NonEmptyList RecordLiteral TextLiteral
+use syntax.TextLiteral Chunks
 use support.Integer Integer
 use utils
 use type_inference
@@ -39,6 +41,7 @@ testsuite.runTestsRecursive testDirectory testSuffix testRunner =
   test t =
     result = testRunner testDirectory t
     printLine ((if result then "✅" else "🚫")++ " " ++ t)
+    -- if result then () else printLine ("🚫 " ++ t)
     if (result) then (1, 0) else (0, 1)
   folderTestResult = List.foldLeft (acc -> t -> updateResults acc (test t)) (0, 0) tests
   result = List.foldLeft (acc -> d -> updateResults acc (runTestsRecursive d testSuffix testRunner)) folderTestResult subdirs
@@ -187,32 +190,32 @@ testsuite.typeInferenceFailureTest testDir name =
         Right t -> Debug.watch ("Expected type error, but got  " ++ printExpression t) false
         Left _ -> true
 
-testsuite.importTest : Text -> Text -> Boolean
-testsuite.importTest testDir name =
-  use Text
-  dirs = List.reverse (utils.splitOn "/" (testDir))
-  use type_inference
-  use .dhall.trunk.utils
-  normalizedExpressionA = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")) with
-    Left err -> Debug.watch ("Parse error : " ++ err) None
-    Right parsed ->
-      match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
-        Left msg -> Debug.watch ("Import error : " ++ msg) None
-        Right resolved -> Optional.Some (betaNormalize resolved)
+-- testsuite.importTest : Text -> Text -> Boolean
+-- testsuite.importTest testDir name =
+--   use Text
+--   dirs = List.reverse (utils.splitOn "/" (testDir))
+--   use type_inference
+--   use .dhall.trunk.utils
+--   normalizedExpressionA = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")) with
+--     Left err -> Debug.watch ("Parse error : " ++ err) None
+--     Right parsed ->
+--       match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
+--         Left msg -> Debug.watch ("Import error : " ++ msg) None
+--         Right resolved -> Optional.Some (betaNormalize resolved)
 
-  normalizedExpressionB = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")) with
-    Left err -> Debug.watch ("Parse error : " ++ err) None
-    Right parsed ->
-      match import.resolve (Path Here (File dirs (name ++ "B.dhall"))) parsed with
-        Left msg -> Debug.watch ("Import error : " ++ msg) None
-        Right resolved -> Optional.Some (betaNormalize resolved)
+--   normalizedExpressionB = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")) with
+--     Left err -> Debug.watch ("Parse error : " ++ err) None
+--     Right parsed ->
+--       match import.resolve (Path Here (File dirs (name ++ "B.dhall"))) parsed with
+--         Left msg -> Debug.watch ("Import error : " ++ msg) None
+--         Right resolved -> Optional.Some (betaNormalize resolved)
 
-  if normalizedExpressionA === normalizedExpressionB
-    then true
-    else
-      printLine("Actual:\n" ++ (printOptional normalizedExpressionA))
-      printLine("Correct:\n" ++ (printOptional normalizedExpressionB))
-      false
+--   if normalizedExpressionA === normalizedExpressionB
+--     then true
+--     else
+--       printLine("Actual:\n" ++ (printOptional normalizedExpressionA))
+--       printLine("Correct:\n" ++ (printOptional normalizedExpressionB))
+--       false
 
 
 testsuite.semanticHashTest : Text -> Text -> Boolean
@@ -302,12 +305,58 @@ testsuite.perfTest _ =
         Right _ -> "Parsed successfully in " ++ (Int.toText duration) ++ "μs"
       printLine msg
 
-testsuite.importTest2 : Text -> Text -> Boolean
-testsuite.importTest2 testDir name =
-  use Text
-  dirs = List.reverse (utils.splitOn "/" (testDir))
-  use type_inference
-  use .dhall.trunk.utils
+-- import.mapTextTextType = Application (Builtin List) (RecordType [("mapKey", Builtin Text), ("mapValue", Builtin Text)])
+
+import.dhallMapToUnison: Expression -> Either Text (Map Text Text)
+import.dhallMapToUnison = cases
+  EmptyList _ -> Right Map.empty
+  NonEmptyList list ->
+      match List.partitionEithers (List.map (cases
+        RecordLiteral [("mapKey", TextLiteral (Chunks [] key)), ("mapValue", TextLiteral (Chunks [] value))] -> Right (key, value)
+        _ -> Left "Error converting map") (Nonempty.toList list)) with
+      ([], rights) -> Right (Map.fromList rights)
+      (h +: _, _) -> Left h
+  _ -> Left "Error converting map, not a list"
+
+testsuite.importTest : FilePath -> Text -> Text ->{IO, Exception} Boolean
+testsuite.importTest cacheDir testDir name =
+  -- if not (name == "originHeaders") then false else
+    use Text
+    dirs = List.reverse (utils.splitOn "/" (testDir))
+    use type_inference
+    use .dhall.trunk.utils
+    envPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "ENV.dhall")
+    env =
+      if fileExists envPath
+        then
+          match parseTestcase envPath with
+          Left err -> Debug.watch ("Error parsing env " ++ err) (Left err)
+          Right parsed ->
+            match
+              import.readOnlyCache cacheDir
+                '(import.mapEnvironment Map.empty '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
+                    '(import.resolve (Path Here (File dirs (name ++ "Env.dhall"))) parsed)))) with
+              Left msg -> Debug.watch ("Import error : " ++ msg) Left msg
+              Right resolved -> dhallMapToUnison (betaNormalize resolved)
+        else
+          Right (Map.singleton "DHALL_TEST_VAR" "6 * 7")
+
+    match env with
+      Left err -> false
+      Right map ->
+        errOrLoader : (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
+        errOrLoader =
+          import.readOnlyCache cacheDir
+            '(import.mapEnvironment map '(import.defaultFileLoader
+                '(setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
+        match errOrLoader with
+          -- Left err ->
+            Left msg -> Debug.watch ("Error setting up loader : " ++ msg) false
+            Right loader ->
+              import.readOnlyCache cacheDir
+                '(import.mapEnvironment map '(import.defaultFileLoader '(loader '(importTestCheck testDir name dirs))))
+
+testsuite.importTestCheck testDir name dirs =
   normalizedExpressionA = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")) with
     Left err -> Debug.watch ("Parse error : " ++ err) None
     Right parsed ->
@@ -329,6 +378,54 @@ testsuite.importTest2 testDir name =
       printLine("Correct:\n" ++ (printOptional normalizedExpressionB))
       false
 
+testsuite.importFailureTest cacheDir testDir name =
+  if (name == "404") then false else
+    use Text
+    dirs = Debug.watch name (List.reverse (utils.splitOn "/" (testDir)))
+    use type_inference
+    use .dhall.trunk.utils
+    envPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "ENV.dhall")
+    env =
+      if fileExists envPath
+        then
+          match parseTestcase envPath with
+          Left err -> Debug.watch ("Error parsing env " ++ err) (Left err)
+          Right parsed ->
+            match
+              import.readOnlyCache cacheDir
+                '(import.mapEnvironment Map.empty '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
+                    '(import.resolve (Path Here (File dirs (name ++ "Env.dhall"))) parsed)))) with
+              Left msg -> Debug.watch ("Import error : " ++ msg) Left msg
+              Right resolved -> dhallMapToUnison (betaNormalize resolved)
+        else
+          Right (Map.singleton "DHALL_TEST_VAR" "6 * 7")
+
+    match env with
+      Left err -> false
+      Right map ->
+        errOrLoader : (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
+        errOrLoader =
+          import.readOnlyCache cacheDir
+            '(import.mapEnvironment map '(import.defaultFileLoader
+                '(setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
+        match errOrLoader with
+          -- Left err ->
+            Left msg -> Debug.watch ("Error setting up loader : " ++ msg) false
+            Right loader ->
+              import.readOnlyCache cacheDir
+                '(import.mapEnvironment map '(import.defaultFileLoader '(loader '(importFailureTestCheck testDir name dirs))))
+
+testsuite.importFailureTestCheck testDir name dirs =
+  match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")) with
+    Left err ->
+      printLine ("Parse failure " ++ err)
+      false
+    Right parsed ->
+      match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
+        Left msg -> true
+        Right resolved ->
+          printLine ("Expected resolve failure, but got " ++ printExpression resolved)
+          false
 
 testsuite.runTests : Text ->{IO, Exception} ()
 testsuite.runTests path =
@@ -342,21 +439,15 @@ testsuite.runTests path =
   bracket
     '(io.setCurrentDirectory (FilePath (path ++ "/..")))
     '(io.setCurrentDirectory origDirectory)
-    '(match import.defaultHeaderRemoteLoader Map.empty with remoteLoader ->
-        printTestStatus path (List.foldLeft updateResults (0,0) [
+    '(printTestStatus path (List.foldLeft updateResults (0,0) [
           -- runTestsRecursive  ("./dhall-lang/tests/parser/success") "A.dhall" parseSuccessTest,
           -- runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
           -- runTestsRecursive  ("./dhall-lang/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
-          withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
+          -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),
           -- runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
-          -- import.mapEnvironment (Map.fromList [("DHALL_TEST_VAR", "6 * 7")]) '(
-          --   import.defaultFileLoader '(
-          --     remoteLoader '(
-          --       (import.readOnlyCache (FilePath (path ++ "/tests/import/cache/dhall"))
-          --         '(runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" importTest))))),
-                -- '(runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" importTest) ())) ())' (),
-          -- runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhallb" importTest2,
+          -- runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          runTestsRecursive  ("./dhall-lang/tests/import/failure") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest),
           -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
           -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,

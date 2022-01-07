@@ -52,18 +52,24 @@ import.referentiallySane parent child = match (parent, child) with
   (Remote _ _, Missing) -> true
   (Path _ _, _) -> true
   (Env _, _) -> true
+  (_, _) -> false
 
 import.corsCompliant : ImportType -> ImportType -> Map Text [Text] -> Boolean
-import.corsCompliant parent child headers = match (parent, child) with
-  (Path _ _, _) -> true
-  (Env _, _) -> true
-  (Remote (URL scheme0 authority0 _ _) _, Remote (URL scheme1 authority1 _ _) _) | (scheme0 === scheme1) && (authority0 == authority1) -> true
-  (Remote (URL scheme0 authority0 _ _) _, Remote (URL scheme1 authority1 _ _) _) ->
-    baseUrl = (if scheme0 === HTTPS then "https://" else "http://") ++ authority0
-    corsHeader = Map.get "Access-Control-Allow-Origin" headers
-    (corsHeader === (Some ["*"])) || (corsHeader === (Some [baseUrl]))
+import.corsCompliant parent child headers =
+    match (parent, Debug.watch ("corsCompliant : " ++ (printImportType parent) ++ ", " ++ (printImportType child)) child) with
+      (Path _ _, _) -> true
+      (Env _, _) -> true
+      (Remote (URL scheme0 authority0 _ _) _, Remote (URL scheme1 authority1 _ _) _) | (scheme0 === scheme1) && (authority0 == authority1) -> true
+      (Remote (URL scheme0 authority0 _ _) _, Remote (URL scheme1 authority1 _ _) _) ->
+        baseUrl = (if scheme0 === HTTPS then "https://" else "http://") ++ authority0
+        corsHeader = Map.get "Access-Control-Allow-Origin" headers
+        (corsHeader === (Some ["*"])) || (corsHeader === (Some [baseUrl]))
+      -- (Remote (URL scheme0 authority0 _ _) _, Remote (URL scheme1 authority1 _ _) _) ->
+      (_, _) -> false
 
--- unique type Chained
+import.corsCheck : ImportType -> ImportType -> Map Text [Text] -> Boolean
+import.corsCheck parent child headers =
+  false
 
 structural ability import.Import where
   import : ImportType -> ImportMode -> (Optional SHA256Digest) -> Expression
@@ -132,7 +138,8 @@ structural ability import.EnvLoader where
   loadEnv : Text -> Either Text Text
 
 structural ability import.RemoteLoader where
-  loadRemote : syntax.URL -> (Optional syntax.Expression) -> Either Text Text
+  loadRemote : ImportType -> syntax.URL -> (Optional syntax.Expression) -> Either Text Text
+  -- loadRemote : syntax.URL -> (Optional syntax.Expression) -> Either Text Text
 
 structural ability import.LocalLoader where
   loadLocal : syntax.FilePrefix -> syntax.File -> Either Text Text
@@ -140,7 +147,8 @@ structural ability import.LocalLoader where
 import.noRemote: '{RemoteLoader, g} b ->{g} b
 import.noRemote f =
   handler = cases
-    {loadRemote url oHeaders -> resume} ->
+    {loadRemote previous url oHeaders -> resume} ->
+    -- {loadRemote url oHeaders -> resume} ->
       res = Left "Remote imports are not supported"
       handle resume res with handler
     {res} -> res
@@ -184,26 +192,71 @@ test> import.convertHeaderExpression.tests.ex1 = check(
 use .external.stew.http Headers
 use .external.stew.http.Headers Headers
 
-import.combineRequestHeaders : Text -> Map Text (Map Text Text) -> (Optional Expression) -> Either Text Headers
-import.combineRequestHeaders authority defaultHeaders oHeaders =
+import.combineRequestHeaders : syntax.Scheme -> Text -> Map Text (Map Text Text) -> (Optional Expression) -> Either Text Headers
+import.combineRequestHeaders scheme authority defaultHeaders oHeaders =
   errorOrHeaders =
-    match oHeaders with
-      None -> Right Map.empty
-      Optional.Some resolvedExpr ->
-        match type_inference.typeCheck Context.empty resolvedExpr with
-          Left err -> Left err
-          Right t | not (t === headersType) -> Left ("The type for the headers should be List { mapKey : Text, mapValue : Text } but was " ++ (utils.printExpression t))
-          _ ->
-            convertHeaderExpression (beta_normalization.betaNormalize resolvedExpr)
+    Debug.watch ("Header defaults: " ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "= {" ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "=" ++ v) (Map.toList v))) ++ "}") (Map.toList defaultHeaders))))
+      match oHeaders with
+        None -> Right Map.empty
+        Optional.Some resolvedExpr ->
+          match type_inference.typeCheck Context.empty resolvedExpr with
+            Left err -> Left err
+            Right t | not (t === headersType) -> Left ("The type for the headers should be List { mapKey : Text, mapValue : Text } but was " ++ (utils.printExpression t))
+            _ ->
+              convertHeaderExpression (beta_normalization.betaNormalize resolvedExpr)
 
   match errorOrHeaders with
     Left err -> Left err
     Right headers ->
-      defaults = Map.getOrElse Map.empty authority defaultHeaders
+      defaults = Map.getOrElse (Map.getOrElse Map.empty (if scheme === HTTP then authority ++ ":80" else authority ++ ":443") defaultHeaders) authority defaultHeaders
       combined =
-         Map.unionWith (_ -> b -> b) (Map.fromList [("Host", authority)])
-           (Map.unionWith (_ -> b -> b) defaults headers)
+        Debug.watch ("Found headers for " ++ authority ++ " : " ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "=" ++v) (Map.toList defaults))))
+          Map.unionWith (_ -> b -> b) (Map.fromList [("Host", authority)])
+            (Map.union defaults headers)
       Right (Headers (Map.map List.singleton combined))
+
+import.setupRemoteLoader: ImportType ->{EnvLoader, LocalLoader, Cache, Exception, IO} (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
+import.setupRemoteLoader base =
+  oHeaderExp = match loadEnv "DHALL_HEADERS" with
+    Right text -> Right (Optional.Some (text, Env "DHALL_HEADERS"))
+    Left _ ->
+      match loadEnv "XDG_CONFIG_HOME" with
+        Right path -> match parseText parser.local (path ++ "/dhall/headers.dhall") with
+          Right confPath@(syntax.ImportType.Path _ _) ->
+            importPath = chainImport base confPath
+            Either.mapRight (t -> Optional.Some (t, importPath))
+              (match importPath with Path prefix file -> loadLocal prefix file)
+          _ -> Left ("XDG_CONFIG_VALUE " ++ path ++ " is not a valid path")
+        Left _ ->
+          importPath = chainImport base (Path Home (syntax.File.File ["dhall", ".config"] "headers.dhall" ))
+          match (match importPath with Path prefix file -> loadLocal prefix file) with
+          Right text -> Right (Optional.Some (text, importPath))
+          Left _ -> Right None
+
+  headerMap = match oHeaderExp with
+    Left err -> Left err
+    Right None -> Right Map.empty
+    -- TODO enter expression into local cache ?
+    Right (Optional.Some (text, import)) -> match (noRemote '(verifyAndResolve (Right text) import None (Map.empty ) [])) with
+      Left err -> Left err
+      Right (exp, _) ->
+        match type_inference.typeCheck Context.empty exp with
+          Left err -> Left err
+          Right t | not (t === defaultHeadersType) -> Left ("The type for the default headers should be List { mapKey : Text, mapValue : List { mapKey : Text, mapValue : Text } } but was " ++ (utils.printExpression t))
+          _ ->
+            match (beta_normalization.betaNormalize exp) with
+              EmptyList _ -> Right Map.empty
+              NonEmptyList list ->
+                match List.partitionEithers (List.map (cases
+                      RecordLiteral [("mapKey", TextLiteral (Chunks [] key)), ("mapValue", exp)] ->
+                        Either.mapRight (headers -> (key, headers)) (convertHeaderExpression exp)
+                      _ -> Left "Error evaluating default headers") (Nonempty.toList list)) with
+                  ([], rights) -> Right (Map.fromList rights)
+                  (h +: _, _) -> Left h
+  match headerMap with
+    Left err -> Left err
+    Right map -> Right (defaultHeaderRemoteLoader map)
+
 
 import.defaultHeaderRemoteLoader3: (Optional Text) -> (Expression ->{EnvLoader, IO, Exception} Either Text Expression) -> Either Text ('{RemoteLoader, IO, Exception} b ->{IO, Exception} b)
 import.defaultHeaderRemoteLoader3 headers localLoader =
@@ -236,10 +289,11 @@ import.defaultHeaderRemoteLoader3 headers localLoader =
 import.defaultHeaderRemoteLoader: Map Text (Map Text Text) -> '{RemoteLoader, g} b ->{IO, g} b
 import.defaultHeaderRemoteLoader defaults =
   handler = cases
-    {loadRemote url oHeaders -> resume} -> match url with (URL scheme authority file oQuery) ->
+    {loadRemote previous url oHeaders -> resume} -> match url with (URL scheme authority file oQuery) ->
+    -- {loadRemote url oHeaders -> resume} -> match url with (URL scheme authority file oQuery) ->
       -- res = Left "TODO"
       -- oHeaders have already been resolved
-      res = match combineRequestHeaders authority defaults oHeaders with
+      res = match combineRequestHeaders scheme authority defaults oHeaders with
         Left err -> Left err
         Right headers ->
           s = match scheme with
@@ -253,13 +307,25 @@ import.defaultHeaderRemoteLoader defaults =
           req _ = request (Request message GET uri)
           response = catch '(handle !req with Http.handler)
           match response with
-            Right (Response _ (Status s st) _ (Optional.Some (Body bytes))) ->
-              Debug.watch ("Response status " ++ (Nat.toText s) ++ " " ++ st)
-                match Text.fromUtf8.impl bytes with
-                  Right t ->
-                    Debug.watch ("Response text: '" ++ t ++ "'")
-                      Right t
-                  Left (Failure _ t _) -> Left t
+            Right resp@(Response _ (Status s st) (Headers headers) (Optional.Some (Body bytes))) | Response.isSuccess resp ->
+              -- if not (corsCompliant previous (Remote url None) headers) then printLine "CORS error!!!" else ()
+                if not (corsCompliant previous (Remote url None) headers)
+                  then Left "CORS error"
+                  else
+              -- Debug.watch ("Response status " ++ (Nat.toText s) ++ " " ++ st ++ "\nCORS: " ++ (if not (corsCheck (Env "abc") (Remote (URL scheme authority file oQuery) None) headers) then "error!!!" else "ok"))
+                    match Text.fromUtf8.impl bytes with
+                      Right t ->
+                        -- Debug.watch ("Response text: '" ++ t ++ "'")
+                          Right t
+                      Left (Failure _ t _) -> Left t
+            Right resp@(Response _ (Status s st) _ (Optional.Some (Body bytes))) ->
+              Left ((Nat.toText s) ++ " " ++ st)
+              -- Debug.watch ("Response status " ++ (Nat.toText s) ++ " " ++ st)
+              --   match Text.fromUtf8.impl bytes with
+              --     Right t ->
+              --       Debug.watch ("Response text: '" ++ t ++ "'")
+              --         Left t
+              --     Left (Failure _ t _) -> Left t
             Left (Failure _ t _) -> Left t
       handle resume res with handler
     {res} -> res
@@ -405,10 +471,10 @@ import.verifyAndResolve loaded importType oDigest cache previous =
         Right parsed ->
           match resolveImports importType (importType +: previous) cache parsed with
             Left err -> Left err
-            -- Right (resolved, newCache) ->
-            --   match type_inference.typeCheck Context.empty resolved with
-            --     Left error -> Left ("Type error in file " ++ (utils.printFilePrefix prefix) ++ (utils.printFile file) ++" : " ++ error)
-            --     Right typedExpression -> Right (betaNormalize resolved, newCache)
+            Right (resolved, newCache) ->
+              match type_inference.typeCheck Context.empty resolved with
+                Left error -> Left ("Type error in " ++ (utils.printImportType importType) ++" : " ++ error)
+                Right typedExpression -> Right (betaNormalize resolved, newCache)
 -- TODO
             Right (resolved, newCache) -> Right (resolved, newCache)
 
@@ -424,7 +490,9 @@ import.resolveImports base previous cache expression =
   handler cache = cases
     {Import.import importType importMode oDigest -> resume} ->
       chained = canonicalizeImport (chainImport base importType)
-      if List.contains chained previous
+      if not (referentiallySane base chained)
+      then Left ("Importing: " ++ (printImportType chained) ++ " from " ++ (printImportType base) ++ " is not referentially sane")
+      else if List.contains chained previous
         then Left ("Cyclic imports: " ++ (printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (printImportType it)) previous)))
         else
           match Optional.flatMap cacheLoad oDigest with
@@ -433,33 +501,23 @@ import.resolveImports base previous cache expression =
               match Map.get (chained, importMode) cache with
                 Optional.Some expression -> handle resume expression with handler cache
                 None ->
-                  result = match chained with
-                    Remote url headers -> match importMode with
-                      Location -> Right (remoteLocation url, cache)
-                      _ ->
-                        loadedText = loadRemote url headers
-                        if (importMode === RawText)
-                          then Either.mapRight (t -> (TextLiteral (Chunks [] t), , cache)) loadedText
-                          else verifyAndResolve loadedText chained oDigest cache previous
+                  result = match importMode with
+                    Location -> match chained with
+                      Remote url headers -> Right (remoteLocation url, cache)
+                      Env text -> Right (envLocation text, cache)
+                      Missing -> Right (missingLocation, cache)
+                      Path prefix file -> Right (localLocation prefix file, cache)
+                    _ ->
+                      loadedText = match chained with
+                        Remote url headers -> loadRemote base url headers
+                        -- Remote url headers -> loadRemote url headers
+                        Env text -> loadEnv text
+                        Missing -> Left "missing import"
+                        Path prefix file -> loadLocal prefix file
+                      if (importMode === RawText)
+                        then Either.mapRight (t -> (TextLiteral (Chunks [] t), , cache)) loadedText
+                        else verifyAndResolve loadedText chained oDigest cache previous
 
-                    Env text -> match importMode with
-                      Location -> Right (envLocation text, cache)
-                      _ ->
-                        loadedText = loadEnv text
-                        if (importMode === RawText)
-                          then Either.mapRight (t -> (TextLiteral (Chunks [] t), , cache)) loadedText
-                          else verifyAndResolve loadedText chained oDigest cache previous
-                    Missing -> match importMode with
-                      Location -> Right (missingLocation, cache)
-                      _ -> Left "missing import" -- Right (Import Missing importMode None, cache)
-                    Path prefix file -> match importMode with
-                      Location -> Right (localLocation prefix file, cache)
-                      _ ->
-                        -- loadedText = loadLocalFile prefix file
-                        loadedText = loadLocal prefix file
-                        if (importMode === RawText)
-                          then Either.mapRight (t -> (TextLiteral (Chunks [] t), , cache)) loadedText
-                          else verifyAndResolve loadedText chained oDigest cache previous
                   match result with
                     -- TODO check digest etc.
                     Right (expression, newCache) -> handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
