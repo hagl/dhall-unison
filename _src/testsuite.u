@@ -125,7 +125,7 @@ testsuite.normalizationTest testDir name =
     Left err -> Debug.watch ("Parse error : " ++ err) None
     Right parsed ->
       match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
-        Left msg -> Debug.watch ("Import error : " ++ msg) None
+        Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
         Right resolved -> Optional.Some (betaNormalize resolved)
 
   bytes = Optional.map encodeExpression normalized
@@ -154,7 +154,7 @@ testsuite.typeInferenceTest testDir name =
         Left err -> Debug.watch ("Parse error : " ++ err) None
         Right parsed ->
           match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
-            Left msg -> Debug.watch ("Import error : " ++ msg) None
+            Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
             Right resolved -> Optional.Some resolved
             -- Right resolved -> Optional.Some (betaNormalize resolved)
 
@@ -190,34 +190,6 @@ testsuite.typeInferenceFailureTest testDir name =
         Right t -> Debug.watch ("Expected type error, but got  " ++ printExpression t) false
         Left _ -> true
 
--- testsuite.importTest : Text -> Text -> Boolean
--- testsuite.importTest testDir name =
---   use Text
---   dirs = List.reverse (utils.splitOn "/" (testDir))
---   use type_inference
---   use .dhall.trunk.utils
---   normalizedExpressionA = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")) with
---     Left err -> Debug.watch ("Parse error : " ++ err) None
---     Right parsed ->
---       match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
---         Left msg -> Debug.watch ("Import error : " ++ msg) None
---         Right resolved -> Optional.Some (betaNormalize resolved)
-
---   normalizedExpressionB = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")) with
---     Left err -> Debug.watch ("Parse error : " ++ err) None
---     Right parsed ->
---       match import.resolve (Path Here (File dirs (name ++ "B.dhall"))) parsed with
---         Left msg -> Debug.watch ("Import error : " ++ msg) None
---         Right resolved -> Optional.Some (betaNormalize resolved)
-
---   if normalizedExpressionA === normalizedExpressionB
---     then true
---     else
---       printLine("Actual:\n" ++ (printOptional normalizedExpressionA))
---       printLine("Correct:\n" ++ (printOptional normalizedExpressionB))
---       false
-
-
 testsuite.semanticHashTest : Text -> Text -> Boolean
 testsuite.semanticHashTest testDir name =
   use Text
@@ -228,8 +200,8 @@ testsuite.semanticHashTest testDir name =
     Left err -> Debug.watch ("Parse error : " ++ err) None
     Right parsed ->
       match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
-        Left msg -> Debug.watch ("Import error : " ++ msg) None
-        Right resolved -> Optional.Some ("sha256:" ++ (import.hashExpression resolved))
+        Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
+        Right resolved -> Optional.Some ("sha256:" ++ (import.hashExpressionToText resolved))
 
   use Text
   checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.hash")
@@ -336,7 +308,7 @@ testsuite.importTest cacheDir testDir name =
               import.readOnlyCache cacheDir
                 '(import.mapEnvironment Map.empty '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
                     '(import.resolve (Path Here (File dirs (name ++ "Env.dhall"))) parsed)))) with
-              Left msg -> Debug.watch ("Import error : " ++ msg) Left msg
+              Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) Left msg
               Right resolved -> dhallMapToUnison (betaNormalize resolved)
         else
           Right (Map.singleton "DHALL_TEST_VAR" "6 * 7")
@@ -361,14 +333,14 @@ testsuite.importTestCheck testDir name dirs =
     Left err -> Debug.watch ("Parse error : " ++ err) None
     Right parsed ->
       match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
-        Left msg -> Debug.watch ("Import error : " ++ msg) None
+        Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
         Right resolved -> Optional.Some (betaNormalize resolved)
 
   normalizedExpressionB = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")) with
     Left err -> Debug.watch ("Parse error : " ++ err) None
     Right parsed ->
       match import.resolve (Path Here (File dirs (name ++ "B.dhall"))) parsed with
-        Left msg -> Debug.watch ("Import error : " ++ msg) None
+        Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
         Right resolved -> Optional.Some (betaNormalize resolved)
 
   if normalizedExpressionA === normalizedExpressionB
@@ -379,6 +351,8 @@ testsuite.importTestCheck testDir name dirs =
       false
 
 testsuite.importFailureTest cacheDir testDir name =
+  -- originHeadersFromRemoteENV is not a failure test but the header configuration for originHeadersFromRemote
+  if (name == "originHeadersFromRemoteENV") then true else
   if (name == "404") then false else
     use Text
     dirs = Debug.watch name (List.reverse (utils.splitOn "/" (testDir)))
@@ -395,13 +369,13 @@ testsuite.importFailureTest cacheDir testDir name =
               import.readOnlyCache cacheDir
                 '(import.mapEnvironment Map.empty '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
                     '(import.resolve (Path Here (File dirs (name ++ "Env.dhall"))) parsed)))) with
-              Left msg -> Debug.watch ("Import error : " ++ msg) Left msg
+              Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) Left msg
               Right resolved -> dhallMapToUnison (betaNormalize resolved)
         else
           Right (Map.singleton "DHALL_TEST_VAR" "6 * 7")
 
     match env with
-      Left err -> false
+      Left err -> Debug.watch ("Error setting up evn: " ++ err ++ "(considered success)") true
       Right map ->
         errOrLoader : (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
         errOrLoader =
@@ -410,7 +384,7 @@ testsuite.importFailureTest cacheDir testDir name =
                 '(setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
         match errOrLoader with
           -- Left err ->
-            Left msg -> Debug.watch ("Error setting up loader : " ++ msg) false
+            Left msg -> Debug.watch ("Error setting up loader : " ++ msg) true
             Right loader ->
               import.readOnlyCache cacheDir
                 '(import.mapEnvironment map '(import.defaultFileLoader '(loader '(importFailureTestCheck testDir name dirs))))
@@ -446,8 +420,8 @@ testsuite.runTests path =
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),
           -- runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
-          -- runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall"))),
-          runTestsRecursive  ("./dhall-lang/tests/import/failure") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          -- runTestsRecursive  ("./dhall-lang/tests/import/failure") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest),
           -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
           -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,

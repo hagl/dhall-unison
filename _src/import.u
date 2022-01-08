@@ -7,6 +7,9 @@ use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmp
 use syntax.Constant Type Kind Sort
 use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
 
+structural type import.ResolveErrorType = ImportError | UnrecoverableImportError| ParseError | TypeError
+structural type import.ResolveError = ResolveError import.ResolveErrorType Text
+
 import.canonicalizeDir : [Text] -> [Text]
 import.canonicalizeDir = cases
   [] -> []
@@ -135,21 +138,20 @@ structural ability import.Loader where
   load : ImportType -> Text
 
 structural ability import.EnvLoader where
-  loadEnv : Text -> Either Text Text
+  loadEnv : Text -> Either import.ResolveError Text
 
 structural ability import.RemoteLoader where
-  loadRemote : ImportType -> syntax.URL -> (Optional syntax.Expression) -> Either Text Text
-  -- loadRemote : syntax.URL -> (Optional syntax.Expression) -> Either Text Text
+  loadRemote : ImportType -> syntax.URL -> (Optional syntax.Expression) -> Either import.ResolveError Text
 
 structural ability import.LocalLoader where
-  loadLocal : syntax.FilePrefix -> syntax.File -> Either Text Text
+  loadLocal : syntax.FilePrefix -> syntax.File -> Either import.ResolveError Text
 
 import.noRemote: '{RemoteLoader, g} b ->{g} b
 import.noRemote f =
   handler = cases
     {loadRemote previous url oHeaders -> resume} ->
     -- {loadRemote url oHeaders -> resume} ->
-      res = Left "Remote imports are not supported"
+      res = Left (ResolveError ImportError "Remote imports are not supported")
       handle resume res with handler
     {res} -> res
   handle !f with handler
@@ -224,9 +226,11 @@ import.setupRemoteLoader base =
         Right path -> match parseText parser.local (path ++ "/dhall/headers.dhall") with
           Right confPath@(syntax.ImportType.Path _ _) ->
             importPath = chainImport base confPath
-            Either.mapRight (t -> Optional.Some (t, importPath))
-              (match importPath with Path prefix file -> loadLocal prefix file)
-          _ -> Left ("XDG_CONFIG_VALUE " ++ path ++ " is not a valid path")
+            match importPath with Path prefix file ->
+              match loadLocal prefix file with
+                Right t -> Right (Optional.Some (t, importPath))
+                Left (ResolveError _ err) -> Right None
+          _ -> Left ("XDG_CONFIG_VALUE " ++ path Text.++ " is not a valid path")
         Left _ ->
           importPath = chainImport base (Path Home (syntax.File.File ["dhall", ".config"] "headers.dhall" ))
           match (match importPath with Path prefix file -> loadLocal prefix file) with
@@ -234,11 +238,12 @@ import.setupRemoteLoader base =
           Left _ -> Right None
 
   headerMap = match oHeaderExp with
+    -- Left (ResolveError _ err) -> Left err
     Left err -> Left err
     Right None -> Right Map.empty
     -- TODO enter expression into local cache ?
     Right (Optional.Some (text, import)) -> match (noRemote '(verifyAndResolve (Right text) import None (Map.empty ) [])) with
-      Left err -> Left err
+      Left (ResolveError _ err) -> Left err
       Right (exp, _) ->
         match type_inference.typeCheck Context.empty exp with
           Left err -> Left err
@@ -256,35 +261,6 @@ import.setupRemoteLoader base =
   match headerMap with
     Left err -> Left err
     Right map -> Right (defaultHeaderRemoteLoader map)
-
-
-import.defaultHeaderRemoteLoader3: (Optional Text) -> (Expression ->{EnvLoader, IO, Exception} Either Text Expression) -> Either Text ('{RemoteLoader, IO, Exception} b ->{IO, Exception} b)
-import.defaultHeaderRemoteLoader3 headers localLoader =
-  defaultHeaders = match headers with
-    None -> Right Map.empty
-    Optional.Some text ->
-      match parser.parseText parser.completeExpression text with
-        Left err -> Left err
-        Right expr ->
-          match noRemote '(localLoader expr) with
-            Left err -> Left err
-            Right resolvedExpr ->
-              match type_inference.typeCheck Context.empty resolvedExpr with
-                Left err -> Left err
-                Right t | not (t === defaultHeadersType) -> Left ("The type for the default headers should be List { mapKey : Text, mapValue : List { mapKey : Text, mapValue : Text } } but was " ++ (utils.printExpression t))
-                _ ->
-                  match (beta_normalization.betaNormalize resolvedExpr) with
-                    EmptyList _ -> Right Map.empty
-                    NonEmptyList list ->
-                      match List.partitionEithers (List.map (cases
-                            RecordLiteral [("mapKey", TextLiteral (Chunks [] key)), ("mapValue", exp)] ->
-                              Either.mapRight (headers -> (key, headers)) (convertHeaderExpression exp)
-                            _ -> Left "Error evaluating default headers") (Nonempty.toList list)) with
-                        ([], rights) -> Right (Map.fromList rights)
-                        (h +: _, _) -> Left h
-  match defaultHeaders with
-    Left err -> Left err
-    Right defaults -> Right (defaultHeaderRemoteLoader defaults)
 
 import.defaultHeaderRemoteLoader: Map Text (Map Text Text) -> '{RemoteLoader, g} b ->{IO, g} b
 import.defaultHeaderRemoteLoader defaults =
@@ -327,7 +303,7 @@ import.defaultHeaderRemoteLoader defaults =
               --         Left t
               --     Left (Failure _ t _) -> Left t
             Left (Failure _ t _) -> Left t
-      handle resume res with handler
+      handle resume (Either.mapLeft (err -> ResolveError ImportError err) res) with handler
     {res} -> res
   go : '{RemoteLoader, g} b ->{g, IO} b
   go f = handle !f with handler
@@ -338,7 +314,7 @@ import.defaultEnvironment f =
   handler = cases
     {loadEnv name -> resume} ->
       res = match io.getEnv.impl name with
-        Left (Failure _ err _) -> Debug.watch err (Left err)
+        Left (Failure _ err _) -> Debug.watch err (Left (ResolveError ImportError err))
         Right v -> Right v
       handle resume res with handler
     {res} -> res
@@ -349,7 +325,7 @@ import.mapEnvironment map f =
   handler = cases
     {loadEnv name -> resume} ->
       res = match Map.get name map with
-        None -> Left ("Environement variable " ++ name ++ " is not set in map")
+        None -> Left (ResolveError ImportError ("Environement variable " ++ name ++ " is not set in map"))
         Optional.Some v -> Right v
       handle resume res with handler
     {res} -> res
@@ -391,14 +367,20 @@ import.localLocation prefix file =
 import.missingLocation : Expression
 import.missingLocation = Field locationType "Missing"
 
-import.hashExpression : Expression -> Text
+import.hashExpression : Expression -> Bytes
 import.hashExpression expression =
   normalized = alpha_normalization.alphaNormalize (beta_normalization.betaNormalize expression)
   encoded = encode normalized
   bytes = Term.toBytes encoded
   hashed = base.crypto.hashBytes HashAlgorithm.Sha2_256 bytes
+  hashed
+
+import.hashExpressionToText : Expression -> Text
+import.hashExpressionToText expression =
+  hashed = hashExpression expression
   base16 = Bytes.toBase16 hashed
   Text.fromCharList (List.map Char.fromNat (Bytes.toList base16))
+
 
 import.defaultFileLoader: '{LocalLoader, IO, Exception, g} b ->{IO, Exception, g} b
 import.defaultFileLoader f =
@@ -409,7 +391,7 @@ import.defaultFileLoader f =
     {res} -> res
   handle f () with handler
 
-import.loadLocalFile : FilePrefix -> File -> Either Text Text
+import.loadLocalFile : FilePrefix -> File -> Either ResolveError Text
 import.loadLocalFile prefix file =
   path =
     Debug.watch ("Loading: " ++ (localPath prefix file))
@@ -419,7 +401,7 @@ import.loadLocalFile prefix file =
         '(openFile (path) Read)
         closeFile
         (fileHandle -> Text.fromUtf8 (getBytes fileHandle (base.io.getFileSize path))))
-    |> Either.mapLeft cases Failure _ t _ -> t
+    |> Either.mapLeft cases Failure _ t _ -> ResolveError ImportError t
 
 import.resolveExpression : Expression ->{Import} Expression
 import.resolveExpression = cases
@@ -461,47 +443,47 @@ import.resolveExpression = cases
   Import (Remote url (Optional.Some headers)) im oDig -> import (Remote url (Optional.Some (resolveExpression headers))) im oDig
   Import it im oDig -> import it im oDig
 
-import.verifyAndResolve : Either Text Text -> ImportType -> (Optional syntax.SHA256Digest) -> Map (ImportType, ImportMode) Expression -> [ImportType] -> Either Text (Expression, Map (ImportType, ImportMode) Expression)
+import.verifyAndResolve : Either ResolveError Text -> ImportType -> (Optional syntax.SHA256Digest) -> Map (ImportType, ImportMode) Expression -> [ImportType] -> Either ResolveError (Expression, Map (ImportType, ImportMode) Expression)
 import.verifyAndResolve loaded importType oDigest cache previous =
   match loaded with
     Left err -> Left err
     Right source ->
       match parser.parseText parser.completeExpression source with
-        Left err -> Left err
+        Left err -> Left (ResolveError ParseError err)
         Right parsed ->
           match resolveImports importType (importType +: previous) cache parsed with
             Left err -> Left err
             Right (resolved, newCache) ->
               match type_inference.typeCheck Context.empty resolved with
-                Left error -> Left ("Type error in " ++ (utils.printImportType importType) ++" : " ++ error)
+                Left error -> Left (ResolveError TypeError ("Type error in " ++ (utils.printImportType importType) ++" : " ++ error))
                 Right typedExpression -> Right (betaNormalize resolved, newCache)
 -- TODO
             Right (resolved, newCache) -> Right (resolved, newCache)
 
 
-import.resolve : ImportType -> Expression -> Either Text Expression
+import.resolve : ImportType -> Expression -> Either ResolveError Expression
 import.resolve base expression =
   resolveImports base [] Map.empty expression
     |> Either.mapRight Tuple.at1
 
 
-import.resolveImports : ImportType -> [ImportType] -> Map (ImportType, ImportMode) Expression -> Expression -> Either Text (Expression, Map (ImportType, ImportMode) Expression)
+import.resolveImports : ImportType -> [ImportType] -> Map (ImportType, ImportMode) Expression -> Expression -> Either ResolveError (Expression, Map (ImportType, ImportMode) Expression)
 import.resolveImports base previous cache expression =
   handler cache = cases
     {Import.import importType importMode oDigest -> resume} ->
       chained = canonicalizeImport (chainImport base importType)
       if not (referentiallySane base chained)
-      then Left ("Importing: " ++ (printImportType chained) ++ " from " ++ (printImportType base) ++ " is not referentially sane")
+      then Left (ResolveError ImportError ("Importing: " ++ (printImportType chained) ++ " from " ++ (printImportType base) ++ " is not referentially sane"))
       else if List.contains chained previous
-        then Left ("Cyclic imports: " ++ (printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (printImportType it)) previous)))
+        then Left (ResolveError UnrecoverableImportError ("Cyclic imports: " ++ (printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (printImportType it)) previous))))
         else
           match Optional.flatMap cacheLoad oDigest with
             Optional.Some expression -> handle resume expression with handler cache
             None ->
-              match Map.get (chained, importMode) cache with
-                Optional.Some expression -> handle resume expression with handler cache
+              result = match Map.get (chained, importMode) cache with
+                Optional.Some expression -> Right (expression, cache)
                 None ->
-                  result = match importMode with
+                  match importMode with
                     Location -> match chained with
                       Remote url headers -> Right (remoteLocation url, cache)
                       Env text -> Right (envLocation text, cache)
@@ -512,35 +494,26 @@ import.resolveImports base previous cache expression =
                         Remote url headers -> loadRemote base url headers
                         -- Remote url headers -> loadRemote url headers
                         Env text -> loadEnv text
-                        Missing -> Left "missing import"
+                        Missing -> Left (ResolveError ImportError "missing import")
                         Path prefix file -> loadLocal prefix file
                       if (importMode === RawText)
                         then Either.mapRight (t -> (TextLiteral (Chunks [] t), , cache)) loadedText
                         else verifyAndResolve loadedText chained oDigest cache previous
 
-                  match result with
-                    -- TODO check digest etc.
-                    Right (expression, newCache) -> handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
-                    Left err -> Left err
+              match result with
+                -- TODO check digest etc.
+                Right (expression, newCache) ->
+                  if Optional.map (cases SHA256Digest digest -> digest === (hashExpression expression)) oDigest === Some false
+                    then Left (ResolveError UnrecoverableImportError "digest doesn't match")
+                    else
+                      handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
+                Left err -> Left err
     {Import.tryResolve exp -> resume} ->
       match resolveImports base previous cache exp with
         Right (exp, newCache) -> handle resume (Some exp) with handler newCache
-        Left (err) ->  -- TODO check error condition for which to resume and which to abort, what about changes to cache ?
+        Left (ResolveError ImportError _) ->
           handle resume None with handler cache
+        Left err -> Left err
     {exp} -> Right (exp, cache)
   handle resolveExpression expression with handler cache
 
-main _ =
-  -- match parseText completeExpression "./abc.txt as Text" with
-  match parseText completeExpression "./abc.dhall" with
-  -- match parseText completeExpression "let concatMapSep = ./abc.txt in concatMapSep \", \" [ \"0\", \"1\" ]" with
-  -- match parseText completeExpression "\"0\" ++ \",\" ++ \"1\" ++ \"xx\" ++ \"22\"" with
-  -- match parseText completeExpression "./abc.txt as Location" with
-  -- match parseText completeExpression "let x = ./abc.txt in x Text ([] : List Text)" with
-  -- match parseText completeExpression "let x = ./abc.txt in x Text ([\"a\"] : List Text)" with
-  -- match parseText completeExpression "Natural/isZero (List/length Text ([] : List Text))" with
-    Right exp ->
-      match resolveImports (Path Absolute (File ["harald", "Users"] ".")) [] Map.empty exp with
-        Right res -> printLine (utils.printExpression (beta_normalization.betaNormalize (Tuple.at1 res)))
-        Left err -> printLine err
-    Left err -> printLine err
