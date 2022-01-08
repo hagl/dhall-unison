@@ -59,7 +59,8 @@ import.referentiallySane parent child = match (parent, child) with
 
 import.corsCompliant : ImportType -> ImportType -> Map Text [Text] -> Boolean
 import.corsCompliant parent child headers =
-    match (parent, Debug.watch ("corsCompliant : " ++ (printImportType parent) ++ ", " ++ (printImportType child)) child) with
+    -- match (parent, Debug.watch ("corsCompliant : " ++ (printImportType parent) ++ ", " ++ (printImportType child)) child) with
+    match (parent, child) with
       (Path _ _, _) -> true
       (Env _, _) -> true
       (Remote (URL scheme0 authority0 _ _) _, Remote (URL scheme1 authority1 _ _) _) | (scheme0 === scheme1) && (authority0 == authority1) -> true
@@ -69,10 +70,6 @@ import.corsCompliant parent child headers =
         (corsHeader === (Some ["*"])) || (corsHeader === (Some [baseUrl]))
       -- (Remote (URL scheme0 authority0 _ _) _, Remote (URL scheme1 authority1 _ _) _) ->
       (_, _) -> false
-
-import.corsCheck : ImportType -> ImportType -> Map Text [Text] -> Boolean
-import.corsCheck parent child headers =
-  false
 
 structural ability import.Import where
   import : ImportType -> ImportMode -> (Optional SHA256Digest) -> Expression
@@ -197,7 +194,7 @@ use .external.stew.http.Headers Headers
 import.combineRequestHeaders : syntax.Scheme -> Text -> Map Text (Map Text Text) -> (Optional Expression) -> Either Text Headers
 import.combineRequestHeaders scheme authority defaultHeaders oHeaders =
   errorOrHeaders =
-    Debug.watch ("Header defaults: " ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "= {" ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "=" ++ v) (Map.toList v))) ++ "}") (Map.toList defaultHeaders))))
+    -- Debug.watch ("Header defaults: " ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "= {" ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "=" ++ v) (Map.toList v))) ++ "}") (Map.toList defaultHeaders))))
       match oHeaders with
         None -> Right Map.empty
         Optional.Some resolvedExpr ->
@@ -212,7 +209,7 @@ import.combineRequestHeaders scheme authority defaultHeaders oHeaders =
     Right headers ->
       defaults = Map.getOrElse (Map.getOrElse Map.empty (if scheme === HTTP then authority ++ ":80" else authority ++ ":443") defaultHeaders) authority defaultHeaders
       combined =
-        Debug.watch ("Found headers for " ++ authority ++ " : " ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "=" ++v) (Map.toList defaults))))
+--        Debug.watch ("Found headers for " ++ authority ++ " : " ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "=" ++v) (Map.toList defaults))))
           Map.unionWith (_ -> b -> b) (Map.fromList [("Host", authority)])
             (Map.union defaults headers)
       Right (Headers (Map.map List.singleton combined))
@@ -284,11 +281,9 @@ import.defaultHeaderRemoteLoader defaults =
           response = catch '(handle !req with Http.handler)
           match response with
             Right resp@(Response _ (Status s st) (Headers headers) (Optional.Some (Body bytes))) | Response.isSuccess resp ->
-              -- if not (corsCompliant previous (Remote url None) headers) then printLine "CORS error!!!" else ()
                 if not (corsCompliant previous (Remote url None) headers)
                   then Left "CORS error"
                   else
-              -- Debug.watch ("Response status " ++ (Nat.toText s) ++ " " ++ st ++ "\nCORS: " ++ (if not (corsCheck (Env "abc") (Remote (URL scheme authority file oQuery) None) headers) then "error!!!" else "ok"))
                     match Text.fromUtf8.impl bytes with
                       Right t ->
                         -- Debug.watch ("Response text: '" ++ t ++ "'")
@@ -394,7 +389,7 @@ import.defaultFileLoader f =
 import.loadLocalFile : FilePrefix -> File -> Either ResolveError Text
 import.loadLocalFile prefix file =
   path =
-    Debug.watch ("Loading: " ++ (localPath prefix file))
+    -- Debug.watch ("Loading: " ++ (localPath prefix file))
       FilePath.FilePath (localPath prefix file)
   catch
     '(bracket
@@ -472,24 +467,26 @@ import.resolveImports base previous cache expression =
   handler cache = cases
     {Import.import importType importMode oDigest -> resume} ->
       chained = canonicalizeImport (chainImport base importType)
-      if not (referentiallySane base chained)
-      then Left (ResolveError ImportError ("Importing: " ++ (printImportType chained) ++ " from " ++ (printImportType base) ++ " is not referentially sane"))
-      else if List.contains chained previous
-        then Left (ResolveError UnrecoverableImportError ("Cyclic imports: " ++ (printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (printImportType it)) previous))))
-        else
-          match Optional.flatMap cacheLoad oDigest with
-            Optional.Some expression -> handle resume expression with handler cache
-            None ->
-              result = match Map.get (chained, importMode) cache with
-                Optional.Some expression -> Right (expression, cache)
+      match importMode with
+        Location ->
+          res = match chained with
+            Remote url headers -> remoteLocation url
+            Env text -> envLocation text
+            Missing -> missingLocation
+            Path prefix file -> localLocation prefix file
+          handle resume res with handler cache
+        _ ->
+          if not (referentiallySane base chained)
+          then Left (ResolveError ImportError ("Importing: " ++ (printImportType chained) ++ " from " ++ (printImportType base) ++ " is not referentially sane"))
+          else if List.contains chained previous
+            then Left (ResolveError UnrecoverableImportError ("Cyclic imports: " ++ (printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (printImportType it)) previous))))
+            else
+              match Optional.flatMap cacheLoad oDigest with
+                Optional.Some expression -> handle resume expression with handler cache
                 None ->
-                  match importMode with
-                    Location -> match chained with
-                      Remote url headers -> Right (remoteLocation url, cache)
-                      Env text -> Right (envLocation text, cache)
-                      Missing -> Right (missingLocation, cache)
-                      Path prefix file -> Right (localLocation prefix file, cache)
-                    _ ->
+                  result = match Map.get (chained, importMode) cache with
+                    Optional.Some expression -> Right (expression, cache)
+                    None ->
                       loadedText = match chained with
                         Remote url headers -> loadRemote base url headers
                         -- Remote url headers -> loadRemote url headers
@@ -500,14 +497,14 @@ import.resolveImports base previous cache expression =
                         then Either.mapRight (t -> (TextLiteral (Chunks [] t), , cache)) loadedText
                         else verifyAndResolve loadedText chained oDigest cache previous
 
-              match result with
-                -- TODO check digest etc.
-                Right (expression, newCache) ->
-                  if Optional.map (cases SHA256Digest digest -> digest === (hashExpression expression)) oDigest === Some false
-                    then Left (ResolveError UnrecoverableImportError "digest doesn't match")
-                    else
-                      handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
-                Left err -> Left err
+                  match result with
+                    -- TODO check digest etc.
+                    Right (expression, newCache) ->
+                      if Optional.map (cases SHA256Digest digest -> digest === (hashExpression expression)) oDigest === Some false
+                        then Left (ResolveError UnrecoverableImportError "digest doesn't match")
+                        else
+                          handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
+                    Left err -> Left err
     {Import.tryResolve exp -> resume} ->
       match resolveImports base previous cache exp with
         Right (exp, newCache) -> handle resume (Some exp) with handler newCache
