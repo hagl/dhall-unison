@@ -81,8 +81,7 @@ structural ability import.Cache where
 
 import.Cache.impl.load: FilePath -> SHA256Digest -> Optional Expression
 import.Cache.impl.load p = cases SHA256Digest bytes ->
-    base16 = Bytes.toBase16 bytes
-    path = FilePath.FilePath (FilePath.toText p ++ "/1220" ++ (Text.fromCharList (List.map Char.fromNat (Bytes.toList base16))))
+    path = FilePath.FilePath (FilePath.toText p ++ "/" ++ hashToFileName bytes)
     match (catch
       '(bracket
           '(openFile (path) Read)
@@ -108,7 +107,27 @@ import.Cache.impl.load p = cases SHA256Digest bytes ->
             Debug.watch ("File loaded from cache has wrong hash: "  ++ (FilePath.toText path))
               None
 
+import.Cache.impl.hashToFileName : Bytes -> Text
+import.Cache.impl.hashToFileName hash =
+  base16 = Bytes.toBase16 hash
+  "1220" ++ (Text.fromCharList (List.map Char.fromNat (Bytes.toList base16)))
 
+import.Cache.impl.store: FilePath -> Expression -> Boolean
+import.Cache.impl.store p expression =
+  match expressionToHashAndEncoded expression with
+    (hash, encoded) ->
+
+    path = FilePath.FilePath (FilePath.toText p ++ "/" ++ hashToFileName hash)
+
+    match (catch
+      '(bracket
+          '(openFile (path) Write)
+          closeFile
+          (fileHandle -> putBytes fileHandle encoded))) with
+      Left (Failure _ t _) ->
+        Debug.watch ("Error writing to cache: " ++ t)
+        false
+      Right _ -> true
 
 import.withoutCache: '{Cache, IO, Exception, g} b ->{IO, Exception, g} b
 import.withoutCache f =
@@ -130,6 +149,58 @@ import.readOnlyCache p f =
       handle resume () with handler
     {res} -> res
   handle !f with handler
+
+import.nestedReadWriteCache: FilePath -> '{Cache, IO, Exception, g} b ->{Cache, IO, Exception, g} b
+import.nestedReadWriteCache p f =
+  handler warned = cases
+    {cacheLoad digest -> resume} ->
+      cached = match Cache.impl.load p digest with
+        None -> cacheLoad digest
+        res -> res
+      handle resume cached with handler warned
+    {cacheStore expression -> resume} ->
+      if (Cache.impl.store p expression) then
+        handle resume () with handler warned
+      else
+        if not warned then printLine ("Unable to write to cache " ++ (FilePath.toText p)) else ()
+        cacheStore expression
+        handle resume () with handler true
+    {res} -> res
+  handle !f with handler false
+
+-- configures a cache that stores it's entries in ${env}/dirs[0]/dirs[1]/.../dirs[n]/
+-- returns None if $env is undefined or these directories don't exist and we cannot create them
+import.configureCache: Text -> [Text] -> {IO} ('{Cache, IO, Exception, g} b ->{Cache, IO, Exception, g} b)
+import.configureCache env dirs =
+  getOrCreate : Optional FilePath ->{IO, Exception} Text ->{IO, Exception} Optional FilePath
+  getOrCreate path subfolder =
+    Optional.flatMap (filePath ->
+      if not (fileExists filePath)
+        then None
+        else
+          newPath = FilePath (FilePath.toText filePath ++ "/" ++ subfolder)
+          base.io.createDirectory newPath
+          Some newPath) path
+
+  cacheDir = catch '(
+    match io.getEnv.impl env with
+      Left err -> None
+      Right t ->
+        filePath = FilePath t
+        if not (fileExists filePath) -- TODO check permissions
+          then None
+          else
+            List.foldLeft getOrCreate (Optional.Some filePath) dirs)
+  match cacheDir with
+    Right (Optional.Some dir) -> nestedReadWriteCache dir
+    _ -> (f -> !f)
+
+import.setupCache : () -> ('{Cache, IO, Exception, g} b ->{IO, Exception, g} b)
+import.setupCache _ =
+  xdgCache = configureCache "XDG_CACHE_HOME" ["dhall"]
+  homeCache = configureCache "HOME" [".cache", "dhall-unison"]
+  go f = withoutCache '(homeCache '(xdgCache f))
+  go
 
 structural ability import.Loader where
   load : ImportType -> Text
@@ -362,13 +433,17 @@ import.localLocation prefix file =
 import.missingLocation : Expression
 import.missingLocation = Field locationType "Missing"
 
-import.hashExpression : Expression -> Bytes
-import.hashExpression expression =
+import.expressionToHashAndEncoded : Expression -> (Bytes, Bytes)
+import.expressionToHashAndEncoded expression =
   normalized = alpha_normalization.alphaNormalize (beta_normalization.betaNormalize expression)
   encoded = encode normalized
   bytes = Term.toBytes encoded
   hashed = base.crypto.hashBytes HashAlgorithm.Sha2_256 bytes
-  hashed
+  (hashed, bytes)
+
+import.hashExpression : Expression -> Bytes
+import.hashExpression = Tuple.at1 . expressionToHashAndEncoded
+
 
 import.hashExpressionToText : Expression -> Text
 import.hashExpressionToText expression =
@@ -498,11 +573,11 @@ import.resolveImports base previous cache expression =
                         else verifyAndResolve loadedText chained oDigest cache previous
 
                   match result with
-                    -- TODO check digest etc.
                     Right (expression, newCache) ->
                       if Optional.map (cases SHA256Digest digest -> digest === (hashExpression expression)) oDigest === Some false
                         then Left (ResolveError UnrecoverableImportError "digest doesn't match")
                         else
+                          Optional.map (_ -> cacheStore expression) oDigest
                           handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
                     Left err -> Left err
     {Import.tryResolve exp -> resume} ->

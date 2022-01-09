@@ -1,7 +1,17 @@
 use support Integer
+use support.Integer Integer
+use support Date Time TimeZone
+use support.Date Date
+use support.Time Time
+use support.TimeZone TimeZone
 use syntax.TextLiteral Chunks
-use syntax Expression filterExpressions
+use syntax.ImportMode Code RawText Location
+use syntax.Constant Type Kind Sort
+use syntax Expression
 use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend CombineRecordTerms Prefer CombineRecordTypes Alternative Equivalent Some
+use syntax.Builtin True False
+
 
 unique type DhallValue =
     DhallList [DhallValue]
@@ -12,6 +22,17 @@ unique type DhallValue =
   | DhallText Text
   | DhallRecord (Map Text DhallValue)
   | DhallOptional (Optional DhallValue)
+
+DhallValue.printExpression = cases
+    DhallList values -> "[" ++ (Text.join ", " (List.map printExpression values)) ++ "]"
+    DhallBoolean b -> if b then "true" else "false"
+    DhallFloat f -> Float.toText f
+    DhallNatural n -> Natural.toDecimalText n
+    DhallInteger (Integer b n) -> (if b then "-" else "") ++ (Natural.toDecimalText n)
+    DhallText t -> t
+    DhallRecord m -> "{" ++ (Text.join "\n  " (List.map (cases (k,v) -> k ++ " = " ++ (printExpression v)) (Map.toList m))) ++ "}"
+    DhallOptional None -> "None"
+    DhallOptional (Optional.Some v) -> "Some" ++ (printExpression v)
 
 DhallValue.fromExpression : Expression -> Either Text DhallValue
 DhallValue.fromExpression expr =
@@ -53,25 +74,60 @@ DhallValue.fromExpression expr =
       DhallSome a0 -> match go a0 path with
         Right v -> Right (DhallOptional (Optional.Some v))
         Left t -> Left t
+      Builtin True -> Right (DhallBoolean true)
+      Builtin False -> Right (DhallBoolean false)
       Builtin b -> fail "Builtin"
       Constant c -> fail "Constant"
   go expr ""
 
+evaluateSimple : Text -> Either Text DhallValue
+evaluateSimple input =
+  match parseText completeExpression input with
+  Left error -> Left error
+  Right parsedExpression ->
+    match type_inference.typeCheck Context.empty parsedExpression with
+        Left error -> Left ("Type error: " ++ error)
+        Right typedExpression -> DhallValue.fromExpression (betaNormalize  parsedExpression)
+
 
 {{ run a Dhall programm}}
-evaluate : Text -> Either Text DhallValue
+evaluate : Text ->{IO, Exception} Either Text DhallValue
 evaluate input =
-  match parseText completeExpression input with
+  path = Path Here (File [] ("_"))
+  go input = match parseText completeExpression input with
     Left error -> Left error
     Right parsedExpression ->
-      match type_inference.typeCheck Context.empty parsedExpression with
-          Left error -> Left ("Type error: " ++ error)
-          Right typedExpression -> DhallValue.fromExpression (betaNormalize  parsedExpression)
+      match import.resolve path parsedExpression with
+        Left (ResolveError _ msg) -> Left msg
+        Right resolved ->
+          match type_inference.typeCheck Context.empty resolved with
+              Left error -> Left ("Type error: " ++ error)
+              Right typedExpression -> DhallValue.fromExpression (betaNormalize  resolved)
+  cache : '{Cache, IO, Exception, g} b ->{IO, Exception, g} b
+  cache = !import.setupCache
+  errOrLoader : (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
+  errOrLoader =
+    cache
+      '(import.mapEnvironment Map.empty '(import.defaultFileLoader
+          '(setupRemoteLoader path)))
+  match errOrLoader with
+    -- Left err ->
+      Left msg -> Left ("Error setting up loader : " ++ msg)
+      Right loader ->
+        cache
+          '(import.mapEnvironment Map.empty '(import.defaultFileLoader '(loader '(go input))))
 
-> evaluate example1.input
-> evaluate "[3, { y = \\(x: Natural) -> x }]"
+main _ =
+  match !getArgs with
+    [arg] ->
+      match evaluate arg with
+        Left err -> printLine ("Error: " ++ err)
+        Right exp -> printLine (printExpression exp)
 
-> evaluate input |> Either.mapRight convertConfigs
+> evaluateSimple example1.input
+> evaluateSimple "[3, { y = \\(x: Natural) -> x }]"
+
+> evaluateSimple input |> Either.mapRight convertConfigs
 
 README.example1.input = Text.join "\n" [
   , "  let Config : Type =                                             "
@@ -148,7 +204,7 @@ README =
   To parse and beta-normalize (evaluate) the expression run
 
   ```
-    evaluate example1.input
+    evaluateSimple example1.input
   ```
 
   Once there is some possibility for reflection/meta-programming in Unison,
@@ -158,14 +214,14 @@ README =
   @source{example1.convertConfigs}
 
   ```
-    evaluate input |> Either.mapRight convertConfigs
+    evaluateSimple input |> Either.mapRight convertConfigs
   ```
 
   While a dhall expression can be a type or a function that can be used in other expressions, the {evaluate} function will only succeed (i.e. produce a  {Right DhallValue})
   when the dhall expression can be fully evaluated to a literal value.
 
   ```
-  evaluate "λ(x: Nat) → x + 1"
+  evaluateSimple "λ(x: Nat) → x + 1"
   ```
 
   }}
