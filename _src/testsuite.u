@@ -180,7 +180,7 @@ testsuite.typeInferenceTest testDir name =
 
 testsuite.typeInferenceFailureTest : Text -> Text -> Boolean
 testsuite.typeInferenceFailureTest testDir name =
-  testPath = Debug.watch (name) FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")
   print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
 
   match parseTestcase testPath with
@@ -273,8 +273,8 @@ testsuite.perfTest _ =
       result = parseTestcase path
       duration = !systemTimeMicroseconds - startTime
       msg = match result with
-        Left _ -> "Parse failure in " ++ (Int.toText duration) ++ "μs"
-        Right _ -> "Parsed successfully in " ++ (Int.toText duration) ++ "μs"
+        Left _ -> "Parse failure in " ++ (durationToText duration)
+        Right _ -> "Parsed successfully in " ++ (durationToText duration)
       printLine msg
 
 -- import.mapTextTextType = Application (Builtin List) (RecordType [("mapKey", Builtin Text), ("mapValue", Builtin Text)])
@@ -353,7 +353,6 @@ testsuite.importTestCheck testDir name dirs =
 testsuite.importFailureTest cacheDir testDir name =
   -- originHeadersFromRemoteENV is not a failure test but the header configuration for originHeadersFromRemote
   if (name == "originHeadersFromRemoteENV") then true else
-  if (name == "404") then false else
     use Text
     dirs = List.reverse (utils.splitOn "/" (testDir))
     use type_inference
@@ -409,7 +408,7 @@ testsuite.runTests path =
     import.mapEnvironment Map.empty
       '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
           '(import.withoutCache f)))
-
+  startTime = !systemTimeMicroseconds
   bracket
     '(io.setCurrentDirectory (FilePath (path ++ "/..")))
     '(io.setCurrentDirectory origDirectory)
@@ -426,7 +425,8 @@ testsuite.runTests path =
           runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
           runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,
         ]))
-  ()
+  duration = !systemTimeMicroseconds - startTime
+  printLine ("Duration: " ++ (durationToText duration))
 
 
 {{ {runTestSuite} will run the [Dhall acceptance tests](https://github.com/dhall-lang/dhall-lang/tree/master/tests)
@@ -451,3 +451,5 @@ testsuite.runTestSuite _ =
     None -> printLine "Usage: run runTestSuite <path to local copy of https://github.com/dhall-lang/dhall-lang>"
     Some path -> runTests path |> '()
 
+utils.durationToText: Int -> Text
+utils.durationToText duration = Float.toText (Int.toFloat (duration / +1000) / 1000.0) ++ "s"
