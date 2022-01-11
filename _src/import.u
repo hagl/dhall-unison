@@ -412,7 +412,7 @@ import.localPath prefix = cases File dirs file ->
     Here -> "./" ++ path
     Parent -> "../" ++ path
     Absolute -> "/" ++ path
-    Home -> "~/" ++ path
+    Home -> Either.fold '("~") id (loadEnv "HOME") ++ "/" ++ path
 
 import.envLocation : Text -> Expression
 import.envLocation name =
@@ -452,7 +452,7 @@ import.hashExpressionToText expression =
   Text.fromCharList (List.map Char.fromNat (Bytes.toList base16))
 
 
-import.defaultFileLoader: '{LocalLoader, IO, g} b ->{IO, g} b
+import.defaultFileLoader: '{LocalLoader, IO, g} b ->{EnvLoader, IO, g} b
 import.defaultFileLoader f =
   handler = cases
     {loadLocal prefix file -> resume} ->
