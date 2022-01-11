@@ -79,7 +79,7 @@ structural ability import.Cache where
   cacheLoad : SHA256Digest -> Optional Expression
   cacheStore : Expression -> ()
 
-import.Cache.impl.load: FilePath -> SHA256Digest -> Optional Expression
+import.Cache.impl.load: FilePath ->{} SHA256Digest ->{IO} Optional Expression
 import.Cache.impl.load p = cases SHA256Digest bytes ->
     path = FilePath.FilePath (FilePath.toText p ++ "/" ++ hashToFileName bytes)
     match (catch
@@ -112,7 +112,7 @@ import.Cache.impl.hashToFileName hash =
   base16 = Bytes.toBase16 hash
   "1220" ++ (Text.fromCharList (List.map Char.fromNat (Bytes.toList base16)))
 
-import.Cache.impl.store: FilePath -> Expression -> Boolean
+import.Cache.impl.store: FilePath -> Expression ->{IO} Boolean
 import.Cache.impl.store p expression =
   match expressionToHashAndEncoded expression with
     (hash, encoded) ->
@@ -129,7 +129,7 @@ import.Cache.impl.store p expression =
         false
       Right _ -> true
 
-import.withoutCache: '{Cache, IO, Exception, g} b ->{IO, Exception, g} b
+import.withoutCache: '{Cache, IO, g} b ->{IO, g} b
 import.withoutCache f =
   handler = cases
     {cacheLoad digest -> resume} ->
@@ -139,7 +139,7 @@ import.withoutCache f =
     {res} -> res
   handle !f with handler
 
-import.readOnlyCache: FilePath -> '{Cache, IO, Exception, g} b ->{IO, Exception, g} b
+import.readOnlyCache: FilePath -> '{Cache, IO, g} b ->{IO, g} b
 import.readOnlyCache p f =
   handler = cases
     {cacheLoad digest -> resume} ->
@@ -150,7 +150,7 @@ import.readOnlyCache p f =
     {res} -> res
   handle !f with handler
 
-import.nestedReadWriteCache: FilePath -> '{Cache, IO, Exception, g} b ->{Cache, IO, Exception, g} b
+import.nestedReadWriteCache: FilePath -> '{Cache, IO, g} b ->{Cache, IO, g} b
 import.nestedReadWriteCache p f =
   handler warned = cases
     {cacheLoad digest -> resume} ->
@@ -162,7 +162,7 @@ import.nestedReadWriteCache p f =
       if (Cache.impl.store p expression) then
         handle resume () with handler warned
       else
-        if not warned then printLine ("Unable to write to cache " ++ (FilePath.toText p)) else ()
+        catch '(if not warned then printLine ("Unable to write to cache " ++ (FilePath.toText p)) else ())
         cacheStore expression
         handle resume () with handler true
     {res} -> res
@@ -170,7 +170,7 @@ import.nestedReadWriteCache p f =
 
 -- configures a cache that stores it's entries in ${env}/dirs[0]/dirs[1]/.../dirs[n]/
 -- returns None if $env is undefined or these directories don't exist and we cannot create them
-import.configureCache: Text -> [Text] -> {IO} ('{Cache, IO, Exception, g} b ->{Cache, IO, Exception, g} b)
+import.configureCache: Text -> [Text] -> {IO} ('{Cache, IO, g} b ->{Cache, IO, g} b)
 import.configureCache env dirs =
   getOrCreate : Optional FilePath ->{IO, Exception} Text ->{IO, Exception} Optional FilePath
   getOrCreate path subfolder =
@@ -195,7 +195,7 @@ import.configureCache env dirs =
     Right (Optional.Some dir) -> nestedReadWriteCache dir
     _ -> (f -> !f)
 
-import.setupCache : () -> ('{Cache, IO, Exception, g} b ->{IO, Exception, g} b)
+import.setupCache : () -> ('{Cache, IO, g} b ->{IO, g} b)
 import.setupCache _ =
   xdgCache = configureCache "XDG_CACHE_HOME" ["dhall"]
   homeCache = configureCache "HOME" [".cache", "dhall-unison"]
@@ -285,7 +285,7 @@ import.combineRequestHeaders scheme authority defaultHeaders oHeaders =
             (Map.union defaults headers)
       Right (Headers (Map.map List.singleton combined))
 
-import.setupRemoteLoader: ImportType ->{EnvLoader, LocalLoader, Cache, Exception, IO} (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
+import.setupRemoteLoader: ImportType ->{EnvLoader, LocalLoader, Cache, IO} (Either Text ('{RemoteLoader, IO, g} b ->{IO, g} b))
 import.setupRemoteLoader base =
   oHeaderExp = match loadEnv "DHALL_HEADERS" with
     Right text -> Right (Optional.Some (text, Env "DHALL_HEADERS"))
@@ -375,7 +375,7 @@ import.defaultHeaderRemoteLoader defaults =
   go f = handle !f with handler
   go
 
-import.defaultEnvironment: '{EnvLoader, IO, Exception, g} b ->{IO, Exception, g} b
+import.defaultEnvironment: '{EnvLoader, IO, g} b ->{IO, g} b
 import.defaultEnvironment f =
   handler = cases
     {loadEnv name -> resume} ->
@@ -452,7 +452,7 @@ import.hashExpressionToText expression =
   Text.fromCharList (List.map Char.fromNat (Bytes.toList base16))
 
 
-import.defaultFileLoader: '{LocalLoader, IO, Exception, g} b ->{IO, Exception, g} b
+import.defaultFileLoader: '{LocalLoader, IO, g} b ->{IO, g} b
 import.defaultFileLoader f =
   handler = cases
     {loadLocal prefix file -> resume} ->

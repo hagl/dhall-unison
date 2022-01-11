@@ -91,7 +91,7 @@ evaluateSimple input =
 
 
 {{ run a Dhall programm}}
-evaluate : Text ->{IO, Exception} Either Text DhallValue
+evaluate : Text ->{IO} Either Text DhallValue
 evaluate input =
   path = Path Here (File [] ("_"))
   go input = match parseText completeExpression input with
@@ -103,19 +103,19 @@ evaluate input =
           match type_inference.typeCheck Context.empty resolved with
               Left error -> Left ("Type error: " ++ error)
               Right typedExpression -> DhallValue.fromExpression (betaNormalize  resolved)
-  cache : '{Cache, IO, Exception, g} b ->{IO, Exception, g} b
+  cache : '{Cache, IO, g} b ->{IO, g} b
   cache = !import.setupCache
-  errOrLoader : (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
+  errOrLoader : (Either Text ('{RemoteLoader, IO, g} b ->{IO, g} b))
   errOrLoader =
     cache
-      '(import.mapEnvironment Map.empty '(import.defaultFileLoader
+      '(import.defaultEnvironment '(import.defaultFileLoader
           '(setupRemoteLoader path)))
   match errOrLoader with
     -- Left err ->
       Left msg -> Left ("Error setting up loader : " ++ msg)
       Right loader ->
         cache
-          '(import.mapEnvironment Map.empty '(import.defaultFileLoader '(loader '(go input))))
+          '(import.defaultEnvironment '(import.defaultFileLoader '(loader '(go input))))
 
 main _ =
   match !getArgs with
