@@ -190,7 +190,7 @@ Once Unison has some reflection/meta-programming possibilities it should be poss
 
 All code in this repository is available under the [3-Clause BSD License][license].
 
-Copyright 2021 [Harald Gliebe][hagl]
+Copyright 2021-2022 [Harald Gliebe][hagl]
 
 This project is based on and uses code from the projects
 - [dhall-lang][dhall-lang-project] ([3-Clause BSD License][dhall-lang-license])
