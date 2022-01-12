@@ -1,7 +1,14 @@
+use support Date Time TimeZone
+use support.Date Date
+use support.Time Time
+use support.TimeZone TimeZone
 use syntax
-use syntax.TextLiteral
-use syntax.Constant
+use syntax.TextLiteral Chunks
+use syntax.ImportMode Code RawText Location
+use syntax.Constant Type Kind Sort
 use syntax Expression
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend CombineRecordTerms Prefer CombineRecordTypes Alternative Equivalent Some
 
 utils.escapeText: Text -> Text
 utils.escapeText t =
@@ -17,7 +24,7 @@ utils.escapeText t =
     ?\\ -> [?\\, ?\\]
     c ->
       n = Char.toNat c
-      if n <= 32 then
+      if n < 32 then
         hexEncoding = Natural.toHex (Natural.fromNat n)
         Text.toCharList ((if n < 16 then "\\u000" else "\\u00") ++ hexEncoding)
       else [c]
@@ -53,7 +60,7 @@ utils.printExpression = cases
   EmptyList T0 -> "[] : " ++ (printExpression T0)
   NonEmptyList ts0 -> "[" ++ (List.foldLeft (++) "" (List.intersperse ", " (List.map printExpression (Nonempty.toList ts0)))) ++ "]"
   Annotation t0 T0 -> (printExpression t0) ++ ": " ++ (printExpression T0)
-  Expression.Operator l0 op r0 -> (printExpression l0) ++ (printOperator op) ++ (printExpression r0)
+  Operator l0 op r0 -> (printExpression l0) ++ (printOperator op) ++ (printExpression r0)
   Application f0 a0 -> (printExpression f0) ++ " " ++ (printExpression a0)
   Field t0 y -> "(" ++ (printExpression t0) ++ ")." ++ y
   ProjectByLabels t0 xs -> "(" ++ (printExpression t0) ++ ").{" ++ (List.foldLeft (++) "" (List.intersperse ", " xs)) ++ "}"
@@ -64,7 +71,7 @@ utils.printExpression = cases
   DoubleLiteral d -> Float.toText d
   NaturalLiteral n -> Natural.toDecimalText n
   IntegerLiteral n -> Integer.toText n
-  Expression.TextLiteral (Chunks xys0 z) -> (List.foldLeft (++) "" (List.intersperse ", " (List.map (cases (t, ex) -> t ++ "{" ++ (printExpression ex) ++ "}") xys0))) ++ z
+  TextLiteral (Chunks xys0 z) -> (List.foldLeft (++) "" (List.intersperse ", " (List.map (cases (t, ex) -> t ++ "{" ++ (printExpression ex) ++ "}") xys0))) ++ z
   RecordType ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ ": " ++ (printExpression e)) ks0)) ++ "}"
   RecordLiteral ks0 -> "{" ++ (Text.join ", " (List.map (cases (a, e) -> a ++ " = " ++ (printExpression e)) ks0)) ++ "}"
   UnionType ks0 ->
@@ -72,72 +79,107 @@ utils.printExpression = cases
     (k, None) -> k
     (k, Optional.Some ex) -> k ++ ": " ++ (printExpression ex)) ks0
     "<" ++ (Text.join " | " unionElements)++ ">"
-  Expression.Some a0 -> "Some " ++ (printExpression a0)
-  Expression.Builtin b -> printBuiltin b
-  Expression.Constant c -> printConstant c
-  DateLiteral (Date.Date y m d) -> (Nat.toText y) ++ "-" ++ (Nat.toText m) ++ "-" ++ (Nat.toText d)
-  TimeLiteral (Time.Time h m s p) -> (Nat.toText h) ++ ":" ++ (Nat.toText m) ++ ":" ++ (Nat.toText (s / (pow 10  p)))
-  TimeZoneLiteral (TimeZone.TimeZone minutes) ->
+  DhallSome a0 -> "Some " ++ (printExpression a0)
+  Builtin b -> printBuiltin b
+  Constant c -> printConstant c
+  DateLiteral (Date y m d) -> (Nat.toText y) ++ "-" ++ (Nat.toText m) ++ "-" ++ (Nat.toText d)
+  TimeLiteral (Time h m s p) -> (Nat.toText h) ++ ":" ++ (Nat.toText m) ++ ":" ++ (Nat.toText (s / (pow 10  p)))
+  TimeZoneLiteral (TimeZone minutes) ->
       positive = minutes Int.>= +0
       absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
       (if positive then "+" else "-") ++ (Nat.toText (absMin / 60)) ++ ":" ++ (Nat.toText (Nat.mod absMin 60))
+  Import importType importMode optDigest -> (printImportType importType) ++ (printImportMode importMode) ++ (Optional.fold '("") (d -> " " ++ printDigest d) optDigest)
+
+utils.printDigest : SHA256Digest -> Text
+utils.printDigest = cases SHA256Digest bytes ->
+  Text.fromCharList (List.map Char.fromNat (Bytes.toList (Bytes.toBase64 bytes)))
+
+utils.printFile : File -> Text
+utils.printFile = cases File dirs file -> Text.join "/" (List.reverse (file +: dirs))
+
+utils.printImportMode : ImportMode -> Text
+utils.printImportMode = cases
+  Code -> ""
+  RawText -> " as Text"
+  Location -> " as Location"
+
+utils.printScheme : Scheme -> Text
+utils.printScheme = cases
+  HTTPS -> "https://"
+  HTTP -> "http://"
+
+utils.printFilePrefix : FilePrefix -> Text
+utils.printFilePrefix = cases
+  Absolute -> "/"
+  Here -> "./"
+  Parent -> "../"
+  Home -> "~/"
+
+utils.printImportType : ImportType -> Text
+utils.printImportType = cases
+  Missing -> "missing"
+  Remote (URL scheme authority file optQuery) optHeaders -> (printScheme scheme) ++ authority ++ (printFile file) ++ (Optional.getOrElse "" optQuery) ++ (Optional.fold '("") (h -> " using " ++ (printExpression h)) optHeaders)
+  Path prefix file -> (printFilePrefix prefix) ++ (printFile file)
+  Env t -> "env:" ++ t
 
 utils.printConstant : Constant -> Text
 utils.printConstant = cases
-  Constant.Type -> "Type"
-  Constant.Kind -> "Kind"
-  Constant.Sort -> "Sort"
+  Type -> "Type"
+  Kind -> "Kind"
+  Sort -> "Sort"
 
 utils.printBuiltin : Builtin -> Text
-utils.printBuiltin = cases
-  Builtin.NaturalBuild -> "Natural/build"
-  Builtin.NaturalFold -> "Natural/fold"
-  Builtin.NaturalIsZero -> "Natural/isZero"
-  Builtin.NaturalEven -> "Natural/even"
-  Builtin.NaturalOdd -> "Natural/odd"
-  Builtin.NaturalToInteger -> "Natural/toInteger"
-  Builtin.NaturalShow -> "Natural/show"
-  Builtin.NaturalSubtract -> "Natural/subtract"
-  Builtin.IntegerToDouble -> "Integer/toDouble"
-  Builtin.IntegerShow -> "Integer/show"
-  Builtin.IntegerNegate -> "Integer/negate"
-  Builtin.IntegerClamp -> "Integer/clamp"
-  Builtin.DoubleShow -> "Double/show"
-  Builtin.ListBuild -> "List/build"
-  Builtin.ListFold -> "List/fold"
-  Builtin.ListLength -> "List/length"
-  Builtin.ListHead -> "List/head"
-  Builtin.ListLast -> "List/last"
-  Builtin.ListIndexed -> "List/indexed"
-  Builtin.ListReverse -> "List/reverse"
-  Builtin.TextShow -> "Text/show"
-  Builtin.TextReplace -> "Text/replace"
-  Builtin.Bool -> "Bool"
-  Builtin.Optional -> "Optional"
-  Builtin.Natural -> "Natural"
-  Builtin.Integer -> "Integer"
-  Builtin.Double -> "Double"
-  Builtin.Text -> "Text"
-  Builtin.List -> "List"
-  Builtin.True -> "True"
-  Builtin.False -> "False"
-  Builtin._None -> "None"
-  Builtin.Date -> "Date"
-  Builtin.Time -> "Time"
-  Builtin.TimeZone -> "TimeZone"
+utils.printBuiltin =
+  use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
+  cases
+    NaturalBuild -> "Natural/build"
+    NaturalFold -> "Natural/fold"
+    NaturalIsZero -> "Natural/isZero"
+    NaturalEven -> "Natural/even"
+    NaturalOdd -> "Natural/odd"
+    NaturalToInteger -> "Natural/toInteger"
+    NaturalShow -> "Natural/show"
+    NaturalSubtract -> "Natural/subtract"
+    IntegerToDouble -> "Integer/toDouble"
+    IntegerShow -> "Integer/show"
+    IntegerNegate -> "Integer/negate"
+    IntegerClamp -> "Integer/clamp"
+    DoubleShow -> "Double/show"
+    ListBuild -> "List/build"
+    ListFold -> "List/fold"
+    ListLength -> "List/length"
+    ListHead -> "List/head"
+    ListLast -> "List/last"
+    ListIndexed -> "List/indexed"
+    ListReverse -> "List/reverse"
+    TextShow -> "Text/show"
+    TextReplace -> "Text/replace"
+    Bool -> "Bool"
+    Optional -> "Optional"
+    Natural -> "Natural"
+    Integer -> "Integer"
+    Double -> "Double"
+    Text -> "Text"
+    List -> "List"
+    True -> "True"
+    False -> "False"
+    DhallNone -> "None"
+    Date -> "Date"
+    Time -> "Time"
+    TimeZone -> "TimeZone"
 
 utils.printOperator : Operator -> Text
 utils.printOperator = cases
-    Operator.Or -> "||"
-    Operator.Plus -> "+"
-    Operator.TextAppend -> "++"
-    Operator.ListAppend -> "#"
-    Operator.And -> "&&"
-    Operator.CombineRecordTerms -> "∧"
-    Operator.Prefer -> "⫽"
-    Operator.CombineRecordTypes -> "⩓"
-    Operator.Times -> "*"
-    Operator.Equal -> "=="
-    Operator.NotEqual -> "!="
-    Operator.Equivalent -> "=="
-    Operator.Alternative -> "?"
+  Or -> "||"
+  Plus -> "+"
+  TextAppend -> "++"
+  ListAppend -> "#"
+  And -> "&&"
+  CombineRecordTerms -> "∧"
+  Prefer -> "⫽"
+  CombineRecordTypes -> "⩓"
+  Times -> "*"
+  Equal -> "=="
+  NotEqual -> "!="
+  Equivalent -> "=="
+  Alternative -> "?"

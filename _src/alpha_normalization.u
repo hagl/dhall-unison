@@ -1,9 +1,12 @@
-use .trunk.syntax
+use syntax.TextLiteral Chunks
+use syntax.Constant
+use syntax Expression
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 
-alpha_normalization.alphaNormalize: Expression -> Expression 
+alpha_normalization.alphaNormalize: Expression -> Expression
 alpha_normalization.alphaNormalize = cases
   Lambda "_" A0 b0 -> Lambda "_" (alphaNormalize A0) (alphaNormalize b0)
-  Lambda x A0 b0 -> 
+  Lambda x A0 b0 ->
     b1 = shift +1 "_" zero b0
     b2 = substitute b1 x zero (Variable "_" zero)
     b3 = shift -1 x zero b2
@@ -27,7 +30,7 @@ alpha_normalization.alphaNormalize = cases
   EmptyList T0 -> EmptyList (alphaNormalize T0)
   NonEmptyList ts0 -> NonEmptyList (Nonempty.map alphaNormalize ts0)
   Annotation t0 T0 -> Annotation (alphaNormalize t0) (alphaNormalize T0)
-  Expression.Operator l0 op r0 -> Expression.Operator (alphaNormalize l0) op (alphaNormalize r0)
+  Operator l0 op r0 -> Operator (alphaNormalize l0) op (alphaNormalize r0)
   Application f0 a0 -> Application (alphaNormalize f0) (alphaNormalize a0)
   Field t0 y -> Field (alphaNormalize t0) y
   ProjectByLabels t0 xs -> ProjectByLabels (alphaNormalize t0) xs
@@ -38,13 +41,13 @@ alpha_normalization.alphaNormalize = cases
   DoubleLiteral d -> DoubleLiteral d
   NaturalLiteral n -> NaturalLiteral n
   IntegerLiteral n -> IntegerLiteral n
-  Expression.TextLiteral (Chunks xys0 z) -> Expression.TextLiteral (Chunks (List.map (cases (s, t0) -> (s, alphaNormalize t0)) xys0) z)
+  TextLiteral (Chunks xys0 z) -> TextLiteral (Chunks (List.map (cases (s, t0) -> (s, alphaNormalize t0)) xys0) z)
   RecordType ks0 -> RecordType (List.map (cases (k, t_T0) -> (k, alphaNormalize t_T0)) ks0)
   RecordLiteral ks0 -> RecordLiteral (List.map (cases (k, t_T0) -> (k, alphaNormalize t_T0)) ks0)
   UnionType ks0 -> UnionType (List.map (cases (k, t) -> (k, Optional.map alphaNormalize t)) ks0)
-  Expression.Some a0 -> Expression.Some (alphaNormalize a0)
-  Expression.Builtin b -> Expression.Builtin b
-  Expression.Constant c -> Expression.Constant c
+  DhallSome a0 -> DhallSome (alphaNormalize a0)
+  Builtin b -> Builtin b
+  Constant c -> Constant c
   DateLiteral t -> DateLiteral t
   TimeLiteral t -> TimeLiteral t
   TimeZoneLiteral tz -> TimeZoneLiteral tz

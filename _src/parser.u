@@ -1,6 +1,15 @@
 use .external.stew.parser Parser ErrorFancy
 use .external.stew.parser.Parser <*
 use parser.util string
+use syntax.TextLiteral Chunks
+use syntax.Constant
+use syntax Expression
+use syntax addTextToTextLiteral
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.ImportMode Code RawText Location
+use support Date Time TimeZone Integer
+
+use Optional
 
 parser.util.string : Text -> Parser e Char Text
 parser.util.string t =
@@ -16,17 +25,17 @@ parser.util.string t =
 
 (parser.combinators.++>) : Parser e Char Text -> Parser e Char Text -> Parser e Char Text
 (parser.combinators.++>) p1 p2 = Parser.flatMap (c -> p2 $> (t -> c ++ t)) p1
-  
+
 parser.combinators.sepBy1 : Parser e t b -> Parser e t a -> Parser e t (List.Nonempty b)
 parser.combinators.sepBy1 pa ps =
-  go a = 
+  go a =
     Parser.map (as -> Nonempty a as) (some (ps *> pa))
   Parser.flatMap go pa
 
-parser.combinators.takeWhile : (Char -> Boolean) -> Parser e Char Text 
+parser.combinators.takeWhile : (Char -> Boolean) -> Parser e Char Text
 parser.combinators.takeWhile predicate = Parser.some (satisfy predicate) $> Text.fromCharList
 
-parser.combinators.takeWhile1 : (Char -> Boolean) -> Parser e Char Text 
+parser.combinators.takeWhile1 : (Char -> Boolean) -> Parser e Char Text
 parser.combinators.takeWhile1 predicate = Parser.many (satisfy predicate) $> Text.fromCharList
 
 parser.combinators.peek : Parser e Char (Optional Char)
@@ -38,9 +47,9 @@ parser.combinators.peek =
   Parser.Parser parse
 
 parser.getLocation : Parser e t Location
-parser.getLocation = 
+parser.getLocation =
   parse : '{Tokens e t} () ->{Throw (Error e t)} (Location, '{Tokens e t} ())
-  parse input = 
+  parse input =
       handle !input
     with
       cases
@@ -53,9 +62,9 @@ parser.combinators.failMessage : Text -> Parser e Char a
 parser.combinators.failMessage error = getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail error))))
 
 parser.tokens.eof: Parser e Char ()
-parser.tokens.eof = 
+parser.tokens.eof =
   parse : '{Tokens e Char} () ->{Throw (Error e Char)} ((), '{Tokens e t} ())
-  parse input = 
+  parse input =
     h = cases
       {Tokens.emit loc t -> resume} -> throw (TrivialError loc (Some (Tokens [t])) (Set.singleton EndOfInput))
       {Tokens.fail e -> _}          -> throw e
@@ -104,7 +113,7 @@ parser.tokens._with = string "with" $> '()
 parser.tokens.builtin : Text -> Parser e Char ()
 parser.tokens.builtin text = Parser.label (string text $> '())"builtin"
 
-parser.tokens.doubleEqual = (string "==") *> peek >>= cases 
+parser.tokens.doubleEqual = (string "==") *> peek >>= cases
     (Optional.Some ?=) -> Parser.fail (TrivialError unknown None (Set.singleton (Label "==")))
     _ -> Parser.const ()
 
@@ -125,17 +134,17 @@ parser.tokens.hexChar: Parser e Char Char
 parser.tokens.hexChar = Parser.token (c -> if Char.ascii.isHexDigit c then Some c else None)
 
 parser.backtickLabel : Parser e Char Text
-parser.backtickLabel = 
+parser.backtickLabel =
   predicate c = (Char.inRange ?\s ?_ c) || (Char.inRange ?a ?~ c)
   parser = (char ?`) *> (Parser.some (satisfy predicate) $> Text.fromCharList) <* (char ?`)
   Parser.label parser "label in backticks"
 
 parser.simpleLabel : Boolean -> Parser e Char Text
-parser.simpleLabel allowReserved = 
+parser.simpleLabel allowReserved =
     restricted = if allowReserved then reservedKeywords else reservedIdentifiers
     (satisfy headCharacter
       >>= (h -> Parser.some (satisfy tailCharacter) $> (t -> Text.fromCharList (h +: t))))
-      >>= (label -> if (Set.contains label restricted) 
+      >>= (label -> if (Set.contains label restricted)
         then getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ label ++ "' is a reserved word")))))
         else Parser.const label)
 
@@ -152,12 +161,12 @@ parser.anyLabelOrSome : Parser e Char Text
 parser.anyLabelOrSome = or anyLabel (Parser.label (string "Some") "Some")
 
 parser.labels : Parser e Char [Text]
-parser.labels =  
+parser.labels =
   emptyLabels = (optional (comma *> whitespace)) *> closeBrace $> '[]
 
   nonEmptyLabels =
-    (optional (comma *> whitespace)) *> 
-      (sepBy1 anyLabelOrSome (whitespace *> comma *> whitespace)) <* 
+    (optional (comma *> whitespace)) *>
+      (sepBy1 anyLabelOrSome (whitespace *> comma *> whitespace)) <*
       (whitespace *> optional (comma *> whitespace) *> closeBrace) $> Nonempty.toList
 
   openBrace *> whitespace *> (or nonEmptyLabels emptyLabels)
@@ -178,7 +187,7 @@ parser.nonemptyWhitespace = (many whitespaceChunk) $> '()
 parser.whitespaceChunk : Parser e Char ()
 parser.whitespaceChunk =
   predicate c = if c == ?\s || (c == ?\t) || (c == ?\n) then Some () else None
-  Parser.label (oneOf 
+  Parser.label (oneOf
     [ many (Tokens.token predicate) $> '()
     , Parser.label (string "\r\n") "newline" $> '()
     , lineComment $> '()
@@ -186,12 +195,12 @@ parser.whitespaceChunk =
     ] $> '()) "whitespace"
 
 parser.charInRange : Nat -> Nat -> Parser e Char Char
-parser.charInRange from to = 
+parser.charInRange from to =
   predicate c = if Char.inRange (Char.fromNat from) (Char.fromNat to) c then Some c else None
   Tokens.token predicate
 
 parser.lineCommentPrefix : Parser e Char Text
-parser.lineCommentPrefix = 
+parser.lineCommentPrefix =
     predicate c = if (Char.inRange ?\s (Char.fromNat 0x0010FFFF) c || (c == ?\t)) then Some c else None
     (string "--") Parser.*> (Parser.some (Tokens.token predicate)) $> (comment -> "--" ++ (Text.fromCharList comment))
 
@@ -205,11 +214,11 @@ parser.blockCommentLevel : 'Parser e Char Text
 parser.blockCommentLevel = '(string "{-" >>= (s -> blockCommentContinue ()) $> (c -> "{-" ++ c ++ "-}"))
 
 parser.blockCommentChunk : 'Parser e Char Text
-parser.blockCommentChunk _ = 
+parser.blockCommentChunk _ =
   characters = Parser.many (
     Tokens.token (c -> if ((Char.inRange ?\s (Char.fromNat 0x0010FFFF) c && (not (c == ?-)) && (not (c == ?{))) || (c == ?\n) || (c == ?\t) ) then Some c else None)    ) $> Text.fromCharList
   character =Tokens.token (c -> if Char.inRange ?\s (Char.fromNat 0x0010FFFF) c || (c == ?\n) || (c == ?\t) then Some c else None) $> Char.toText
-  oneOf 
+  oneOf
     [ (blockCommentLevel ())
     , characters
     , character
@@ -223,31 +232,31 @@ parser.blockCommentContinue _ =
   or endOfComment continue
 
 parser.shebang : Parser e Char Text
-parser.shebang = 
+parser.shebang =
   predicate c = Char.inRange ?\s  (Char.fromNat 0x10FFFF) c || (c == ?\t)
   string "#!" *> (takeWhile predicate) <* eol
 
 parser.parseText : Parser Void Char r -> Text -> Either Text r
-parser.parseText parser text = 
+parser.parseText parser text =
   Either.mapLeft printError (Parser.run (parser <* eof) (Tokens.fromText text))
 
 parser.exponent : Parser e Char Text
-parser.exponent = 
+parser.exponent =
   (eq ?e)
     +:> (Parser.optional((Parser.or plus minus) $> Char.toText) $> Optional.getOrElse "")
     ++> (many digit $> Text.fromCharList)
-    
+
 parser.numericDoubleLiteral : Parser e Char Text
-parser.numericDoubleLiteral = 
+parser.numericDoubleLiteral =
   Parser.optional((Parser.or (plus  $> (const "")) (minus $> Char.toText))) $> Optional.getOrElse ""
     ++> (many digit $> Text.fromCharList)
-    ++> (or 
-      ((eq ?.) +:> (many digit $> Text.fromCharList) 
+    ++> (or
+      ((eq ?.) +:> (many digit $> Text.fromCharList)
         ++> ((Parser.optional exponent) $> (Optional.getOrElse "")))
       exponent)
 
 parser.doubleLiteral : Parser e Char Float
-parser.doubleLiteral = 
+parser.doubleLiteral =
   err : Text -> Text -> Parser e Char Float
   err text reason = getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ text ++ "' cannot be parsed as float. " ++ reason)))))
   textToFloat : Text -> Parser e Char Float
@@ -263,7 +272,7 @@ parser.doubleLiteral =
       string "-Infinity" $> 'support.negInfinity
     , string "Infinity"  $> 'support.infinity
     , string "NaN" $> 'support.nan
-    , numericDoubleLiteral >>= textToFloat 
+    , numericDoubleLiteral >>= textToFloat
   ]
 
 test> parser.doubleLiteral.tests.ex1 = check (parseText parser.doubleLiteral "123.456789e-100" === Right 123.456789e-100)
@@ -271,10 +280,10 @@ test> parser.doubleLiteral.tests.ex2 = check (parseText parser.doubleLiteral "+1
 test> parser.doubleLiteral.tests.ex3 = check (parseText parser.doubleLiteral "Infinity" |> Either.mapRight Float.toText === Right "Infinity")
 test> parser.doubleLiteral.tests.ex4 = check (parseText parser.doubleLiteral "-Infinity" |> Either.mapRight Float.toText === Right "-Infinity")
 test> parser.doubleLiteral.tests.ex5 = check (parseText parser.doubleLiteral "NaN" |> Either.mapRight Float.toText === Right "NaN")
-  
+
 parser.naturalLiteral : Parser e Char Natural
 parser.naturalLiteral = oneOf [
-    (string "0x" *> (many hexChar) $> Text.fromCharList 
+    (string "0x" *> (many hexChar) $> Text.fromCharList
       >>= (s -> match (Natural.parse s 16) with
         None -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' cannot be parsed as hex literal"))))))
         Optional.Some n -> Parser.const n))
@@ -295,16 +304,16 @@ test> parser.naturalLiteral.test.ex7= check (parseText (parser.naturalLiteral <*
 test> parser.naturalLiteral.test.ex8= check (parseText parser.naturalLiteral "0" === Right zero)
 
 parser.integerLiteral : Parser e Char Integer
-parser.integerLiteral = (Parser.or 
+parser.integerLiteral = (Parser.or
   (minus *> naturalLiteral $> Integer.negative)
-  (plus *> naturalLiteral $> Integer.positive) 
+  (plus *> naturalLiteral $> Integer.positive)
   )
 
 test> parser.integerLiteral.test.ex1 = check (parseText parser.integerLiteral "-0x0" === Right (Integer.positive zero))
 test> parser.integerLiteral.test.ex2 = check (parseText parser.integerLiteral "-1" === Right (Integer.negative one))
 
 parser.validUnicodeCodePoint: Nat -> Boolean
-parser.validUnicodeCodePoint n = 
+parser.validUnicodeCodePoint n =
   ((0x0 <= n) && (n <= 0xD7FF)) ||
     ((0xE000 <= n) && (n <= 0xFFFD)) ||
     ((0x10000 <= n) && (n <= 0x1FFFD)) ||
@@ -326,7 +335,7 @@ parser.validUnicodeCodePoint n =
 
 parser.validNonAscii : Parser e Char Char
 parser.validNonAscii =
-  predicate c = 
+  predicate c =
     n = Char.toNat c
     use .base.Nat <=
     if ((0x80 <= n) && validUnicodeCodePoint n)
@@ -352,27 +361,27 @@ parser.doubleQuoteChar = oneOf [
 
 parser.validCodePoint : Text -> Parser e Char Char
 parser.validCodePoint s = match Optional.flatMap Natural.toNat (Natural.parse (s) 16) with
-  Optional.Some n -> if (validUnicodeCodePoint n) 
+  Optional.Some n -> if (validUnicodeCodePoint n)
     then Parser.const (Char.fromNat n)
     else (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' is not a valid unicode codepoint"))))))
   None -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' cannot be parsed as unicode escape"))))))
 
 parser.unbracedEscape : Parser e Char Char
-parser.unbracedEscape = (hexChar ^ hexChar ^ hexChar ^ hexChar) >>= cases (((a ,b) ,c), d) -> 
+parser.unbracedEscape = (hexChar ^ hexChar ^ hexChar ^ hexChar) >>= cases (((a ,b) ,c), d) ->
     validCodePoint (Text.fromCharList [a, b, c, d])
 
 parser.bracedEscape : Parser e Char Char
-parser.bracedEscape = (many hexChar) >>= cases chars -> 
+parser.bracedEscape = (many hexChar) >>= cases chars ->
     validCodePoint (Text.fromCharList chars)
 
 parser.unicodeEscape : Parser e Char Char
-parser.unicodeEscape = 
-  or 
+parser.unicodeEscape =
+  or
     unbracedEscape
     (eq ?{ *> bracedEscape <* (eq ?}))
 
 parser.doubleQuoteEscaped : Parser e Char Char
-parser.doubleQuoteEscaped = 
+parser.doubleQuoteEscaped =
   or
     (Tokens.token cases
       ?" -> Some ?"
@@ -398,36 +407,36 @@ unique type parser.ApplicationExprInfo
     -- ^ Any other application expression.
 
 parser.alternative0 : Parser e Char Expression -> (Parser e Char Expression)
-parser.alternative0 dExpression = 
-  (lambda *> whitespace *> openParen *> whitespace *> label <* whitespace <* (char ?:) <* nonemptyWhitespace) ^ 
+parser.alternative0 dExpression =
+  (lambda *> whitespace *> openParen *> whitespace *> label <* whitespace <* (char ?:) <* nonemptyWhitespace) ^
   (dExpression <* whitespace <* closeParen <* whitespace <* arrow <* whitespace) ^
   dExpression $> cases
     ((a, b), c) -> Lambda a b c
 
 parser.alternative1 : Parser e Char Expression -> (Parser e Char Expression)
-parser.alternative1 dExpression = 
+parser.alternative1 dExpression =
   (string "if" *> nonemptyWhitespace *> dExpression <* whitespace) ^
   (string "then" *> nonemptyWhitespace *> dExpression <* whitespace) ^
   (string "else" *> nonemptyWhitespace *> dExpression) $> cases
-    ((a, b), c) -> If a b c 
+    ((a, b), c) -> If a b c
 
 
 parser.alternative2 : Parser e Char Expression -> (Parser e Char Expression)
-parser.alternative2 dExpression = 
+parser.alternative2 dExpression =
   letBinding : Parser e Char ((Text, Optional Expression), Expression)
-  letBinding = 
+  letBinding =
     (string "let" *> nonemptyWhitespace *> nonreservedLabel <* whitespace) ^
     (Parser.optional (string ":" *> nonemptyWhitespace *> dExpression <* whitespace)) ^
     (string "=" *> whitespace *> dExpression <* whitespace)
   ((many letBinding) <* string "in" <* nonemptyWhitespace) ^ dExpression $> cases
-    (ls, ex) -> 
+    (ls, ex) ->
       List.foldRight (cases ((l, mT), e) -> ex -> Let l mT e ex) ex ls
 
 -- ; "forall (x : a) -> b"
 -- / forall whsp "(" whsp nonreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
 
 parser.alternative3 : Parser e Char Expression -> (Parser e Char Expression)
-parser.alternative3 dExpression = 
+parser.alternative3 dExpression =
   (_forall *> whitespace *> openParen *>  whitespace *> nonreservedLabel <* whitespace) ^
   (string ":" *> nonemptyWhitespace *> dExpression <* whitespace <* closeParen <* whitespace) ^
   (arrow *> whitespace *> dExpression) $> cases
@@ -456,10 +465,284 @@ parser.operatorParsers =
     , notEqual <* whitespace $> '(a b -> Operator a NotEqual b)
     ]
 
+parser.hash : Parser e Char SHA256Digest
+parser.hash = ((string "sha256:") *> (many (hexChar ^ hexChar))) $> List.map (cases (a,b) -> Optional.flatMap Natural.toNat (Natural.parse (fromCharList [a, b]) 16))>>= (
+      nats -> if (List.all Optional.isSome nats) && (List.size nats == 32) then Parser.const (SHA256Digest (Bytes.fromList (List.somes nats)))
+        else (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("Hash must consist of 64 hex digits")))))))
+
+-- ; Printable characters other than " ()[]{}<>/\,"
+-- ;
+-- ; Excluding those characters ensures that paths don't have to end with trailing
+-- ; whitespace most of the time
+parser.pathCharacter : Parser e Char Char
+parser.pathCharacter =
+  oneOf [
+      charInRange 0x21 0x21
+    , charInRange 0x24 0x27
+    , charInRange 0x2A 0x2B
+    , charInRange 0x2D 0x2E
+    , charInRange 0x30 0x3B
+    , charInRange 0x3D 0x3D
+    , charInRange 0x40 0x5A
+    , charInRange 0x5E 0x7A
+    , charInRange 0x7C 0x7C
+    , charInRange 0x7E 0x7E
+    ]
+
+parser.quotedPathCharacter : Parser e Char Char
+parser.quotedPathCharacter =
+    oneOf [
+        charInRange 0x20 0x21
+      , charInRange 0x23 0x2E
+      , charInRange 0x30 0x7F
+      , validNonAscii
+      ]
+
+
+parser.unquotedPathComponent : Parser e Char Text
+parser.unquotedPathComponent = (many parser.pathCharacter) $> Text.fromCharList
+
+parser.quotedPathComponent : Parser e Char Text
+parser.quotedPathComponent = (many parser.quotedPathCharacter) $> Text.fromCharList
+
+parser.pathComponent : Parser e Char Text
+parser.pathComponent = (char ?/) *> (or unquotedPathComponent ((char ?" *> quotedPathComponent <* (char ?"))))
+
+parser.path : Parser e Char File
+parser.path = (many pathComponent) >>= (l -> match List.nonempty l with
+  Some nel -> Parser.const (File (List.reverse (Nonempty.init nel)) (Nonempty.last nel))
+  None  -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("Path must have at lease one component")))))))
+
+parser.parentPath : Parser e Char ImportType
+parser.parentPath = (string "..") *> path $> (f -> Path Parent f)
+parser.herePath : Parser e Char ImportType
+parser.herePath = (string ".") *> path $> (f -> Path Here f)
+parser.homePath : Parser e Char ImportType
+parser.homePath = (string "~") *> path $> (f -> Path Home f)
+parser.absolutePath : Parser e Char ImportType
+parser.absolutePath = path $> (f -> Path Absolute f)
+
+parser.local = Parser.oneOf [
+  parentPath,
+  herePath,
+  homePath,
+  absolutePath
+]
+
+parser.bashEnvironmentVariable : Parser e Char Text
+parser.bashEnvironmentVariable = (or (char ?_ ) ascii.letter) ^ (some  (or (char ?_ ) ascii.alphanum)) $> cases (c, cl) -> Text.fromCharList (c +: cl)
+
+parser.posixEnvironmentVariable : Parser e Char Text
+parser.posixEnvironmentVariable = (many parser.posixEnvironmentChar) $> (cl -> Text.fromCharList cl)
+
+parser.posixEnvironmentChar : Parser e Char Char
+parser.posixEnvironmentChar = oneOf [
+  string "\\\"" $> '?",
+  string "\\\\" $> '?\\,
+  string "\\a" $> '?\a,
+  string "\\b" $> '?\b,
+  string "\\f" $> '?\f,
+  string "\\n" $> '?\n,
+  string "\\r" $> '?\r,
+  string "\\t" $> '?\t,
+  string "\\v" $> '?\v,
+  charInRange 0x20 0x21,
+  charInRange 0x23 0x3c,
+  charInRange 0x3e 0x5b,
+  charInRange 0x5d 0x7e
+]
+
+parser.env : Parser e Char syntax.ImportType
+parser.env = string "env:" *> (or parser.bashEnvironmentVariable ((char ?") *> parser.posixEnvironmentVariable <* (char ?"))) $> Env
+
+
+parser.scheme : Parser e Char syntax.Scheme
+parser.scheme = (string "http") *> (optional (char ?s)) $> (Optional.fold 'HTTP 'HTTPS)
+
+parser.authority : Parser e Char Text
+parser.authority = (optional (userinfo <* (char ?@))) ^ host ^ (optional ((char ?:) *> port)) $> cases ((u, h), p) -> (Optional.fold (_ -> "") (u -> u ++ "@") u)  ++ h ++ (Optional.fold (_ -> "") ((++) ":") p)
+
+parser.userinfoChars : Parser e Char Text
+parser.userinfoChars = Parser.map Char.toText (oneOf [
+  unreserved,
+  subDelims,
+  (char ?:)
+])
+
+parser.userinfo : Parser e Char Text
+parser.userinfo = Parser.map (Text.join "") (many (oneOf [
+  parser.userinfoChars,
+  pctEncoded
+]))
+-- userinfo = *( unreserved / pct-encoded / sub-delims / ":" )
+
+parser.decOctet : Parser e Char Text
+parser.decOctet = oneOf [
+  string "25" *> (charInRange 0x30 0x35) $> (c -> "25" ++ (Char.toText c)),
+  string "2" *> (charInRange 0x30 0x34) ^ ascii.digit $> cases (c, d) -> Text.fromCharList [?2, c, d],
+  string "1" *> ascii.digit ^ ascii.digit $> cases (c, d) -> Text.fromCharList [?1, c, d],
+  charInRange 0x31 0x39 ^ ascii.digit $> cases (c, d) -> Text.fromCharList [c, d],
+  ascii.digit $> Char.toText
+]
+
+parser.IPv4address : Parser e Char Text
+parser.IPv4address = decOctet ^ ((char ?.) *> decOctet) ^ ((char ?.) *> decOctet) ^ ((char ?.) *> decOctet) $> cases
+  (((a,b), c), d) -> Text.join "." [a,b,c,d]
+
+
+parser.IPvFuture = (char ?v) *> (many hexChar) ^ ((char ?.) *> (many (oneOf [unreserved, subDelims, (char ?:)))) $> cases
+  (v, w) -> Text.fromCharList (?. +: v ++ (?. +: w))
+
+parser.h16 : Parser e Char Text
+-- parser.h16 = hexChar ^ hexChar ^ hexChar ^ hexChar $> cases (((a, b), c), d) -> Text.fromCharList [a, b, c, d]
+parser.h16 = repeatMinMax 1 4 hexChar $> Text.fromCharList
+
+parser.ls32 : Parser e Char Text
+parser.ls32 = oneOf [
+  parser.h16 ^ ((char ?:) *> parser.h16) $> cases (a, b) -> a ++ ":" ++ b,
+  parser.IPv4address
+]
+
+parser.utils.repeat : Nat -> Parser e Char a -> Parser e Char [a]
+parser.utils.repeat n p =
+  go = cases
+    0 -> Parser.const []
+    n -> p >>= ( x -> Parser.map ((List.+:) x) (go (Nat.drop n 1)))
+  go n
+
+test> parser.utils.repeat.tests.ex1 = check (parseText (repeat 3 (char ?x)) "xxx" === Right [?x, ?x, ?x])
+
+parser.utils.repeatMinMax : Nat -> Nat -> Parser e Char a -> Parser e Char [a]
+parser.utils.repeatMinMax min max p =
+  go = cases
+    (0, _) -> Parser.const []
+    (n, 0) -> (Parser.or (p >>= ( x -> (Parser.map ((List.+:) x) (go (Nat.drop n 1, 0))))) (Parser.const []))
+    (n, m) -> p >>= ( x -> Parser.map ((List.+:) x) (go (Nat.drop n 1, Nat.drop m 1)))
+  go (max, min)
+
+
+test> parser.utils.repeatMinMax.tests.ex1 = check (parseText (repeatMinMax 1 3 (char ?x)) "xxx" === Right [?x, ?x, ?x])
+test> parser.utils.repeatMinMax.tests.ex2 = check (parseText (repeatMinMax 1 4 (char ?x)) "xxx" === Right [?x, ?x, ?x])
+test> parser.utils.repeatMinMax.tests.ex3 = check (parseText (repeatMinMax 1 4 (char ?x)) "xxxxx" === Right [?x, ?x, ?x, ?x])
+test> parser.utils.repeatMinMax.tests.ex4 = check (isLeft (parseText (repeatMinMax 4 5 (char ?x)) "xxx"))
+
+
+-- ; NOTE: Backtrack when parsing each alternative
+parser.IPv6address : Parser e Char Text
+parser.IPv6address = oneOf [
+  (parser.utils.repeat 6 (h16 <* (char ?:))) ^ ls32 $> cases (l,t) -> Text.join ":" (l :+ t),
+  (string "::") *> (parser.utils.repeat 5 (h16 <* (char ?:))) ^ ls32 $> cases (l,t) -> Text.join ":" (":" +: l :+ t),
+  (optional h16) ^ ((string "::") *> (parser.utils.repeat 4 (h16 <* (char ?:)))) ^ ls32 $> cases ((oh, l), t) -> (Optional.getOrElse "" oh) ++ (Text.join ":" (":" +: l :+ t)),
+  (optional (h16 ^ (parser.utils.repeatMinMax 0 1 ((char ?:) *> h16)))) ^ ((string "::") *> (parser.utils.repeat 3 (h16 <* (char ?:)))) ^ ls32 $> cases
+    ((oh, l), t) -> (Optional.getOrElse "" (Optional.map (cases (h, t) -> Text.join ":" (h +: t)) oh)) ++ (Text.join ":" (":" +: l :+ t)),
+  (optional (h16 ^ (parser.utils.repeatMinMax 0 2 ((char ?:) *> h16)))) ^ ((string "::") *> (parser.utils.repeat 2 (h16 <* (char ?:)))) ^ ls32 $> cases
+    ((oh, l), t) -> (Optional.getOrElse "" (Optional.map (cases (h, t) -> Text.join ":" (h +: t)) oh)) ++ (Text.join ":" (":" +: l :+ t)),
+  (optional (h16 ^ (parser.utils.repeatMinMax 0 3 ((char ?:) *> h16)))) ^ ((string "::") *> (parser.utils.repeat 1 (h16 <* (char ?:)))) ^ ls32 $> cases
+    ((oh, l), t) -> (Optional.getOrElse "" (Optional.map (cases (h, t) -> Text.join ":" (h +: t)) oh)) ++ (Text.join ":" (":" +: l :+ t)),
+  (optional (h16 ^ (parser.utils.repeatMinMax 0 4 ((char ?:) *> h16)))) ^ ((string "::") *> ls32) $> cases
+    (oh, l) -> (Optional.getOrElse "" (Optional.map (cases (h, t) -> Text.join ":" (h +: t)) oh)) ++ "::" ++ l,
+  (optional (h16 ^ (parser.utils.repeatMinMax 0 5 ((char ?:) *> h16)))) ^ ((string "::") *> h16) $> cases
+    (oh, l) -> (Optional.getOrElse "" (Optional.map (cases (h, t) -> Text.join ":" (h +: t)) oh)) ++ "++" ++ l,
+  (optional (h16 ^ (parser.utils.repeatMinMax 0 6 ((char ?:) *> h16)))) <* (string "::") $>
+    (oh -> (Optional.getOrElse "" (Optional.map (cases (h, t) -> Text.join ":" (h +: t)) oh)) ++ "::"
+]
+
+parser.IPv6address.test.verify text = check (parseText parser.IPv6address text === Right text)
+test> parser.IPv6address.test.ex1 = parser.IPv6address.test.verify "ABCD:DCBA:AAAA:BBBB:DDDD:CCCC:123.123.123.123"
+test> parser.IPv6address.test.ex2 = parser.IPv6address.test.verify "::AAAA:BBBB:DDDD:CCCC:123.123.123.123"
+test> parser.IPv6address.test.ex3 = parser.IPv6address.test.verify "::AAAA:BBBB:DDDD:123.123.123.123"
+test> parser.IPv6address.test.ex4 = parser.IPv6address.test.verify "9999:1111::AAAA:BBBB:DDDD:123.123.123.123"
+test> parser.IPv6address.test.ex5 = parser.IPv6address.test.verify "2001:db8:85a3:0:0:8a2e:370:7334"
+
+--                                          6( h16 ":" ) ls32
+--             /                       "::" 5( h16 ":" ) ls32
+--             / [ h16               ] "::" 4( h16 ":" ) ls32
+--             / [ h16 *1( ":" h16 ) ] "::" 3( h16 ":" ) ls32
+--             / [ h16 *2( ":" h16 ) ] "::" 2( h16 ":" ) ls32
+--             / [ h16 *3( ":" h16 ) ] "::"    h16 ":"   ls32
+--             / [ h16 *4( ":" h16 ) ] "::"              ls32
+--             / [ h16 *5( ":" h16 ) ] "::"              h16
+--             / [ h16 *6( ":" h16 ) ] "::"
+
+parser.IPLiteral = (char ?[) *> (or parser.IPv6address parser.IPvFuture  ) <* (char ?]) $> (ip -> "[" ++ ip ++ "]")
+
+parser.host : Parser e Char Text
+parser.host = oneOf [
+  parser.IPLiteral,
+  parser.IPv4address,
+  domain
+]
+
+parser.domain : Parser e Char Text
+parser.domain = domainlabel ^ some ((char ?.) *> domainlabel) ^ (optional (char ?.)) $> (cases ((h, t), s) -> (Text.join "." (h +: t)) ++ (Optional.fold (_ -> "") (_ -> ".") s))
+
+parser.domainlabel : Parser e Char Text
+parser.domainlabel = ((many ascii.alphanum) ^ (some ((many (char ?-) ^ (many ascii.alphanum)) $> cases (a,b) -> a ++ b))) $> cases (a,b) -> Text.fromCharList (List.flatMap id (a +: b))
+-- domainlabel = 1*ALPHANUM *(1*"-" 1*ALPHANUM)
+
+
+parser.port : Parser e Char Text
+parser.port = many ascii.digit $> Text.fromCharList
+
+parser.pathAbempty : Parser e Char File
+parser.pathAbempty = (some ((char ?/) *> parser.segment)) $> cases
+  [] -> File [] ""
+  (l :+ f) -> File (List.reverse l) f
+
+parser.segment : Parser e Char Text
+parser.segment = (some pChar) $> (Text.join "")
+
+parser.unreserved : Parser e Char Char
+parser.unreserved = oneOf [
+  ascii.alphanum,
+  char ?-,
+  char ?.,
+  char ?_,
+  char ?~
+]
+
+parser.pctEncoded : Parser e Char Text
+parser.pctEncoded = (char ?%) *> hexChar ^ hexChar $> cases (c1, c2) -> Text.fromCharList [?%, c1, c2]
+
+parser.subDelims : Parser e Char Char
+parser.subDelims = oneOf [
+  char ?!,
+  char ?$,
+  char ?&,
+  char ?',
+  char ?*,
+  char ?+,
+  char ?;,
+  char ?=
+]
+
+parser.pCharCharacter : Parser e Char Text
+parser.pCharCharacter = Parser.map (Text.fromCharList . List.singleton) (oneOf [
+  parser.unreserved,
+  parser.subDelims,
+  (char ?:),
+  (char ?@)
+])
+
+parser.pChar : Parser e Char Text
+parser.pChar = oneOf [
+  parser.pCharCharacter,
+  parser.pctEncoded
+]
+
+parser.query : Parser e Char Text
+parser.query = (some (oneOf [pChar,  (string "/"),  (string "?")])) $> (Text.join "")
+
+
+parser.httpRaw : Parser e Char syntax.URL
+parser.httpRaw = parser.scheme ^ ((string "://") *> authority) ^  pathAbempty ^ (optional ((char ??) *> query )) $> (cases (((s, t), f), oq) -> URL s t f oq)
+
 parser.alternative5 : Parser e Char Expression -> (Parser e Char Expression)
-parser.alternative5 dExpression = 
+parser.alternative5 dExpression =
   completeExpression = (some shebang) *> whitespace *> dExpression <* whitespace
   interpolation = string "${" *> completeExpression <* string "}"
+
+  use dhall.prs._imports.syntax TextLiteral
 
   singleQuoteContinue : TextLiteral -> Parser e Char TextLiteral
   singleQuoteContinue tl = oneOf [
@@ -482,25 +765,26 @@ parser.alternative5 dExpression =
   doubleQuotedLiteral : Parser e Char TextLiteral
   doubleQuotedLiteral = ((eq ?") .*> (some doubleQuoteChunk) <* (eq ?")) $> (List.foldLeft (TextLiteral.<>) (Chunks [] ""))
 
-  textLiteral = Parser.label ((Parser.or doubleQuotedLiteral singleQuoteLiteral) $> TextLiteral) "literal"
+  textLiteral =
+    Parser.label ((Parser.or doubleQuotedLiteral singleQuoteLiteral) $> Expression.TextLiteral) "literal"
 
   emptyRecordLiteral : Parser e Char Expression
   emptyRecordLiteral = equal *> optional (whitespace *> comma) *> whitespace $> '(RecordLiteral [])
 
   emptyRecordType : Parser e Char Expression
   emptyRecordType = Parser.const (RecordType [])
-  
+
   nonEmptyRecordTypeOrLiteral : Parser e Char Expression
-  nonEmptyRecordTypeOrLiteral = 
+  nonEmptyRecordTypeOrLiteral =
     nonEmptyRecordType : Parser e Char Expression
-    nonEmptyRecordType = 
+    nonEmptyRecordType =
       entry = anyLabelOrSome <* (whitespace *> colon *> nonemptyWhitespace) ^ (dExpression <* whitespace)
       (sepBy1 entry (comma *> whitespace)) <* (optional (whitespace *> comma)) <* whitespace $> (RecordType . Nonempty.toList)
 
     nonEmptyRecordLiteral : Parser e Char Expression
     nonEmptyRecordLiteral =
       keysValue : Parser e Char (Text, Expression)
-      keysValue =  
+      keysValue =
         ((anyLabelOrSome <* whitespace) ^
         (some (dot *> whitespace *> anyLabelOrSome <* whitespace)) ^
         ((optional (equal *> whitespace *> dExpression)) <* whitespace)) >>= cases
@@ -526,15 +810,15 @@ parser.alternative5 dExpression =
   ]
 
   unionType : Parser e Char Expression
-  unionType = 
+  unionType =
     unionTypeEntry = (anyLabelOrSome <* whitespace) ^ (optional (colon *> nonemptyWhitespace *> dExpression <* whitespace))
     emptyUnionType = ((optional (bar *> whitespace)) *> closeAngle *> whitespace) $> '(UnionType [])
-    nonEmptyUnionType = 
+    nonEmptyUnionType =
       (optional (bar *> whitespace)) *> (sepBy1 unionTypeEntry (bar *> whitespace)) <* ((optional (bar *> whitespace)) *> closeAngle) $> (UnionType . Nonempty.toList)
     Parser.label (openAngle *> whitespace *> (or nonEmptyUnionType emptyUnionType)) "literal"
 
   listLiteral : Parser e Char Expression
-  listLiteral = 
+  listLiteral =
     emptyListLiteral = (optional (comma *> whitespace) *> closeBracket *> whitespace *> colon *> nonemptyWhitespace *> dExpression) $> EmptyList
     nonEmptyListLiteral = (optional (comma *> whitespace)) *> (sepBy1 dExpression (comma *> whitespace)) <*  (optional (comma *> whitespace) *> closeBracket) $> NonEmptyList
     Parser.label (openBracket *> whitespace *> (or nonEmptyListLiteral emptyListLiteral)) "literal"
@@ -546,70 +830,71 @@ parser.alternative5 dExpression =
 
   builtinExpression : Parser e Char Expression
   builtinExpression =
-    peek >>= cases 
+    use syntax.Builtin Integer Date Time TimeZone
+    peek >>= cases
       Optional.Some ?N -> Parser.oneOf [
-          , (builtin "Natural/fold") >>= '(Parser.const (Expression.Builtin NaturalFold))
-          , (builtin "Natural/build") >>= '(Parser.const (Expression.Builtin NaturalBuild))
-          , (builtin "Natural/isZero") >>= '(Parser.const (Expression.Builtin NaturalIsZero))
-          , (builtin "Natural/even") >>= '(Parser.const (Expression.Builtin NaturalEven))
-          , (builtin "Natural/odd") >>= '(Parser.const (Expression.Builtin NaturalOdd))
-          , (builtin "Natural/subtract") >>= '(Parser.const (Expression.Builtin NaturalSubtract))
-          , (builtin "Natural/toInteger") >>= '(Parser.const (Expression.Builtin NaturalToInteger))
-          , (builtin "Natural/show") >>= '(Parser.const (Expression.Builtin NaturalShow))
-          , (builtin "None") >>= '(Parser.const (Expression.Builtin _None))
-          , (builtin "Natural") >>= '(Parser.const (Expression.Builtin Natural))
+          , (builtin "Natural/fold") >>= '(Parser.const (Builtin NaturalFold))
+          , (builtin "Natural/build") >>= '(Parser.const (Builtin NaturalBuild))
+          , (builtin "Natural/isZero") >>= '(Parser.const (Builtin NaturalIsZero))
+          , (builtin "Natural/even") >>= '(Parser.const (Builtin NaturalEven))
+          , (builtin "Natural/odd") >>= '(Parser.const (Builtin NaturalOdd))
+          , (builtin "Natural/subtract") >>= '(Parser.const (Builtin NaturalSubtract))
+          , (builtin "Natural/toInteger") >>= '(Parser.const (Builtin NaturalToInteger))
+          , (builtin "Natural/show") >>= '(Parser.const (Builtin NaturalShow))
+          , (builtin "None") >>= '(Parser.const (Builtin DhallNone))
+          , (builtin "Natural") >>= '(Parser.const (Builtin Natural))
         ]
   --                       choice
   --                           , DoubleLit nan    <$ _NaN
   --                           ]
       Optional.Some ?I -> oneOf [
-          , (builtin "Integer/clamp") >>= '(Parser.const (Expression.Builtin IntegerClamp))
-          , (builtin "Integer/negate") >>= '(Parser.const (Expression.Builtin IntegerNegate))
-          , (builtin "Integer/show") >>= '(Parser.const (Expression.Builtin IntegerShow))
-          , (builtin "Integer/toDouble") >>= '(Parser.const (Expression.Builtin IntegerToDouble))
-          , (builtin "Integer") >>= '(Parser.const (Expression.Builtin Integer))
+          , (builtin "Integer/clamp") >>= '(Parser.const (Builtin IntegerClamp))
+          , (builtin "Integer/negate") >>= '(Parser.const (Builtin IntegerNegate))
+          , (builtin "Integer/show") >>= '(Parser.const (Builtin IntegerShow))
+          , (builtin "Integer/toDouble") >>= '(Parser.const (Builtin IntegerToDouble))
+          , (builtin "Integer") >>= '(Parser.const (Builtin Integer))
           ]
 
       Optional.Some ?D -> oneOf [
-          , (builtin "Date") >>= '(Parser.const (Expression.Builtin Date))
-          , (builtin "Double/show") >>= '(Parser.const (Expression.Builtin DoubleShow))
-          , (builtin "Double") >>= '(Parser.const (Expression.Builtin Double))
+          , (builtin "Date") >>= '(Parser.const (Builtin Date))
+          , (builtin "Double/show") >>= '(Parser.const (Builtin DoubleShow))
+          , (builtin "Double") >>= '(Parser.const (Builtin Double))
           ]
 
       Optional.Some ?L -> oneOf [
-        , (builtin "List/build") >>= '(Parser.const (Expression.Builtin ListBuild))
-        , (builtin "List/fold") >>= '(Parser.const (Expression.Builtin ListFold))
-        , (builtin "List/length") >>= '(Parser.const (Expression.Builtin ListLength))
-        , (builtin "List/head") >>= '(Parser.const (Expression.Builtin ListHead))
-        , (builtin "List/last") >>= '(Parser.const (Expression.Builtin ListLast))
-        , (builtin "List/indexed") >>= '(Parser.const (Expression.Builtin ListIndexed))
-        , (builtin "List/reverse") >>= '(Parser.const (Expression.Builtin ListReverse))
-        , (builtin "List") >>= '(Parser.const (Expression.Builtin List))
+        , (builtin "List/build") >>= '(Parser.const (Builtin ListBuild))
+        , (builtin "List/fold") >>= '(Parser.const (Builtin ListFold))
+        , (builtin "List/length") >>= '(Parser.const (Builtin ListLength))
+        , (builtin "List/head") >>= '(Parser.const (Builtin ListHead))
+        , (builtin "List/last") >>= '(Parser.const (Builtin ListLast))
+        , (builtin "List/indexed") >>= '(Parser.const (Builtin ListIndexed))
+        , (builtin "List/reverse") >>= '(Parser.const (Builtin ListReverse))
+        , (builtin "List") >>= '(Parser.const (Builtin List))
         ]
-  
-      Optional.Some ?O -> (builtin "Optional") >>= '(Parser.const (Expression.Builtin Optional))
-      Optional.Some ?B -> (builtin "Bool") >>= '(Parser.const (Expression.Builtin Bool))
-      Optional.Some ?S -> (builtin "Sort") >>= '(Parser.const (Expression.Constant Sort))
+
+      Optional.Some ?O -> (builtin "Optional") >>= '(Parser.const (Builtin Optional))
+      Optional.Some ?B -> (builtin "Bool") >>= '(Parser.const (Builtin Bool))
+      Optional.Some ?S -> (builtin "Sort") >>= '(Parser.const (Constant Sort))
 
       Optional.Some ?T -> oneOf [
-        , (builtin "Text/replace") >>= '(Parser.const (Expression.Builtin TextReplace))
-        , (builtin "Text/show") >>= '(Parser.const (Expression.Builtin TextShow))
-        , (builtin "Text") >>= '(Parser.const (Expression.Builtin Text))
-        , (builtin "TimeZone") >>= '(Parser.const (Expression.Builtin TimeZone))
-        , (builtin "Time") >>= '(Parser.const (Expression.Builtin Time))
-        , (builtin "True") >>= '(Parser.const (Expression.Builtin True))
-        , (builtin "Type") >>= '(Parser.const (Expression.Constant Type))
+        , (builtin "Text/replace") >>= '(Parser.const (Builtin TextReplace))
+        , (builtin "Text/show") >>= '(Parser.const (Builtin TextShow))
+        , (builtin "Text") >>= '(Parser.const (Builtin Text))
+        , (builtin "TimeZone") >>= '(Parser.const (Builtin TimeZone))
+        , (builtin "Time") >>= '(Parser.const (Builtin Time))
+        , (builtin "True") >>= '(Parser.const (Builtin True))
+        , (builtin "Type") >>= '(Parser.const (Constant Type))
       ]
-      Optional.Some ?F ->  (builtin "False") >>= '(Parser.const (Expression.Builtin False))
-      Optional.Some ?K ->  (builtin "Kind") >>= '(Parser.const (Expression.Constant Kind))
+      Optional.Some ?F ->  (builtin "False") >>= '(Parser.const (Builtin False))
+      Optional.Some ?K ->  (builtin "Kind") >>= '(Parser.const (Constant Kind))
 
       _ -> Parser.fail (TrivialError unknown None (Set.singleton (Label "no builtin")))
 
   parenExpression : Parser e Char Expression
   parenExpression = openParen *> whitespace *> dExpression <* (whitespace *> closeParen)
 
-  primitiveExpression = 
-    oneOf 
+  primitiveExpression =
+    oneOf
       [ temporalLiteral
       , doubleLiteral $> DoubleLiteral
       , naturalLiteral $> NaturalLiteral
@@ -623,7 +908,7 @@ parser.alternative5 dExpression =
       , parenExpression
       ] -- TODO
 
-  selectorExpression = 
+  selectorExpression =
     recordType = openParen *> whitespace *> dExpression <* whitespace <* closeParen
     field x e = Field e x
     projectBySet xs e = ProjectByLabels e xs
@@ -635,24 +920,60 @@ parser.alternative5 dExpression =
       , recordType $> projectByExpression
     ]))) $> cases (a, b) -> List.foldLeft (e k -> k e) a b
 
-  completionExpression = 
+  completionExpression =
     selectorExpression ^ (optional (whitespace*> doubleColon *> whitespace *> selectorExpression)) $> cases
       (a, None) -> a
       (a, Optional.Some b) -> Completion a b
 
-  importExpression = completionExpression -- TODO
+
+  http : Parser e Char Expression -> Parser e Char syntax.ImportType
+  http dImportExpression = httpRaw ^ (optional (whitespace *> (string "using") *> nonemptyWhitespace *> dImportExpression)) $> cases (url, oExpression) -> Remote url oExpression
+  -- TODO
+  -- http dImportExpression = httpRaw ^ (optional (whitespace *> (string "using") *> nonemptyWhitespace)) $> cases (url, oExpression) -> Remote url None
+
+
+  simpleLabelNextChar : Char -> Boolean
+  simpleLabelNextChar c = isAlphaNum c || (List.contains c [ ?-, ?/, ?_ ])
+
+
+  importType : Parser e Char Expression -> Parser e Char ImportType
+  importType dImportExpression = oneOf [
+    (string "missing") *> peek >>= cases
+      (Optional.Some c) | simpleLabelNextChar c -> Parser.fail (TrivialError unknown None Set.empty)
+      _ -> Parser.const Missing,
+    parser.local,
+    http dImportExpression,
+    parser.env
+  ]
+
+  importHashed dImportExpression = (importType dImportExpression) ^ (optional (nonemptyWhitespace *> hash))
+
+  import dImportExpression = (importHashed dImportExpression) ^ (optional (whitespace  *> (string "as") *> nonemptyWhitespace *> (or (string "Text") (string "Location")))) $> cases
+    ((importType, hash), None) -> Import importType Code hash
+    ((importType, hash), Some "Text") -> Import importType RawText hash
+    ((importType, hash), Some "Location") -> Import importType Location hash
+
+  -- importExpression = or import completionExpression
+
+  importExpressionRec : '(Parser e Char Expression) -> Parser e Char Expression
+  importExpressionRec p =
+    dImportExpression = Parser.delay p
+    or (import dImportExpression) completionExpression
+
+
+  importExpression = fix importExpressionRec
 
   applicationExpressionWithInfo : Parser e Char (ApplicationExprInfo, Expression)
   applicationExpressionWithInfo =
     oneOf [
       (string "merge" *> nonemptyWhitespace *> importExpression <* nonemptyWhitespace) $> (a -> (b -> Merge a b None, Some "second arg to 'merge'"))
-    , (string "Some" *> nonemptyWhitespace) $> '(Expression.Some, Some "argument to 'Some'")
+    , (string "Some" *> nonemptyWhitespace) $> '(DhallSome, Some "argument to 'Some'")
     , (string "toMap" *> nonemptyWhitespace) $> '(a -> ToMap a None, Some "argument to 'toMap'")
     , Parser.const (id, None)
-    ] >>= cases 
-      (f, maybeMessage) -> 
+    ] >>= cases
+      (f, maybeMessage) ->
           importExpression ^ (some (nonemptyWhitespace *> importExpression)) $> cases
-        (a, bs) -> 
+        (a, bs) ->
           c = foldLeft Application (f a) bs
           info = match (maybeMessage, bs) with
             (Optional.Some _, []) -> NakedMergeOrSomeOrToMap
@@ -670,8 +991,8 @@ parser.alternative5 dExpression =
         ( makeOperatorExpression p0 operatorParser p
         , makeOperatorExpression p  operatorParser p
         )
-    makeOperatorExpression firstSubExpression operatorParser subExpression = 
-      firstSubExpression ^ 
+    makeOperatorExpression firstSubExpression operatorParser subExpression =
+      firstSubExpression ^
         (some ((whitespace *> operatorParser) ^ subExpression $> cases (op, r0) -> (l -> op l r0))) $> cases
         (a, bs) -> List.foldLeft (x f -> f x) a bs
     List.foldRight cons nil operatorParsers
@@ -697,19 +1018,19 @@ parser.alternative5 dExpression =
         (Merge c d Nothing, NakedMergeOrSomeOrToMap) -> dExpression $> (b -> Merge c d (Some b))
         (ToMap c Nothing, NakedMergeOrSomeOrToMap) -> dExpression $> (b -> ToMap c (Some b))
         _ -> dExpression $> (b -> Annotation a b)))
-      
+
       alternative5B2 a = Parser.const a -- TODO a
       (parseFirstOperatorExpression <* whitespace) >>= (a -> oneOf [alternative5B0 a, alternative5B1 a, alternative5B2 a])
     oneOf [alternative5A, alternative5B]
 
   applicationExpressionWithInfo >>= cases
-    (a0Info, a0) -> 
+    (a0Info, a0) ->
       match operatorExpression(Parser.const a0) with
         (parseFirstOperatorExpression, parseOperatorExpression) ->
           alternatives a0Info a0 parseFirstOperatorExpression parseOperatorExpression
 
 parser.recExpression : '(Parser e Char Expression) -> (Parser e Char Expression)
-parser.recExpression expression = 
+parser.recExpression expression =
   dExpression = Parser.delay expression
 
   oneOf [
@@ -754,7 +1075,7 @@ parser.util.printErrorFancy = cases
 
 use base.io.Filepath Filepath
 parser.util.printLocation : Location -> Text
-parser.util.printLocation = cases 
+parser.util.printLocation = cases
   Range fp lineStart colStart lineEnd colEnd ->  "TODO"
   Location.Location fp (Line line) (Col col) -> (base.io.FilePath.toText fp) ++ ":(" ++ (Nat.toText line) ++ ", " ++ (Nat.toText col) ++ ")"
 
@@ -798,27 +1119,35 @@ parser.checkDate y m d = match m with
 
 
 parser.fullDate : Parser e Char Date
-parser.fullDate = dateYear ^ (minus *> dateMonth) ^ (minus *> dateDay) >>= (cases -- TODO check day with regards to month/year
-  ((y, m), d) | checkDate y m d -> Parser.const (Date y m d)
-  ((y, m), d) -> failMessage ("Invalid date " ++ (Nat.toText y) ++ "-" ++(Nat.toText m) ++ "-" ++(Nat.toText d)))
+parser.fullDate =
+  use support.Date Date
+  dateYear ^ (minus *> dateMonth) ^ (minus *> dateDay) >>= (cases -- TODO check day with regards to month/year
+    ((y, m), d) | checkDate y m d -> Parser.const (Date y m d)
+    ((y, m), d) -> failMessage ("Invalid date " ++ (Nat.toText y) ++ "-" ++(Nat.toText m) ++ "-" ++(Nat.toText d)))
 
 parser.partialTime : Parser e Char Time
-parser.partialTime = timeHour ^ (colon *> timeMinutes) ^ (colon *> timeSeconds) ^ (optional timeSecfrac) >>= cases
-  (((h, m), s), None) -> Parser.const (Time h m s 0)
-  (((h, m), s), Optional.Some frac) -> match (Nat.fromText ((Nat.toText s) ++ frac)) with
-    Optional.Some n -> Parser.const (Time h m n (Text.size frac))
-    None -> failMessage ("cannot parse fractional part '" ++ frac ++ "'")
+parser.partialTime =
+  use support.Time Time
+  timeHour ^ (colon *> timeMinutes) ^ (colon *> timeSeconds) ^ (optional timeSecfrac) >>= cases
+    (((h, m), s), None) -> Parser.const (Time h m s 0)
+    (((h, m), s), Optional.Some frac) -> match (Nat.fromText ((Nat.toText s) ++ frac)) with
+      Optional.Some n -> Parser.const (Time h m n (Text.size frac))
+      None -> failMessage ("cannot parse fractional part '" ++ frac ++ "'")
 
 parser.timeNumoffset : Parser e Char TimeZone
-parser.timeNumoffset = (or plus minus) ^ timeHour ^ (colon *> timeMinutes) $> cases
-  ((?+,  h), m) -> TimeZone (Nat.toInt (h * 60 + m))
-  ((?-,  h), m) -> TimeZone (-1 * (Nat.toInt (h * 60 + m)))
+parser.timeNumoffset =
+  use support.TimeZone TimeZone
+  (or plus minus) ^ timeHour ^ (colon *> timeMinutes) $> cases
+    ((?+,  h), m) -> TimeZone (Nat.toInt (h * 60 + m))
+    ((?-,  h), m) -> TimeZone (-1 * (Nat.toInt (h * 60 + m)))
 
 
 parser.timeOffset : Parser e Char TimeZone
-parser.timeOffset = oneOf [
-  timeNumoffset,
-  char ?Z $> '(TimeZone +0)
+parser.timeOffset =
+  use support.TimeZone TimeZone
+  oneOf [
+    timeNumoffset,
+    char ?Z $> '(TimeZone +0)
   ]
 
 parser.temporalLiteral : Parser e Char Expression

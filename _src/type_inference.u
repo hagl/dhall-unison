@@ -1,23 +1,27 @@
-use .dhall.prs._typechecker.syntax Expression TextLiteral
-use .dhall.prs._typechecker.syntax.TextLiteral
-use .dhall.prs._typechecker.syntax
-use .dhall.prs._typechecker.syntax.Expression
-use .dhall.prs._typechecker.utils
+use syntax Expression Constant Operator
+use syntax.TextLiteral Chunks
+use syntax.Constant Type Kind Sort
+use shift shift
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Operator Or Plus TextAppend ListAppend And CombineRecordTerms Prefer CombineRecordTypes Times Equal NotEqual Equivalent Alternative
+use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
+use Optional
+use utils
 
 type_inference.functionCheck : Constant -> Constant -> Constant
 type_inference.functionCheck c1 c2 = match (c1, c2) with
-  (_, Constant.Type) -> Constant.Type
-  (Constant.Sort, Constant.Kind) -> Constant.Sort
-  (_, Constant.Kind) -> Constant.Kind
-  (_, Constant.Sort) -> Constant.Sort
+  (_, Type) -> Type
+  (Sort, Kind) -> Sort
+  (_, Kind) -> Kind
+  (_, Sort) -> Sort
 
 type_inference.upperBound : Constant -> Constant -> Constant
 type_inference.upperBound c1 c2 = match (c1, c2) with
-  (Constant.Sort, _) -> Constant.Sort
-  (_, Constant.Sort) -> Constant.Sort
-  (Constant.Kind, _) -> Constant.Kind
-  (_, Constant.Kind) -> Constant.Kind
-  _  -> Constant.Type
+  (Sort, _) -> Sort
+  (_, Sort) -> Sort
+  (Kind, _) -> Kind
+  (_, Kind) -> Kind
+  _  -> Type
 
 unique type type_inference.Context = Context [(Text, Expression)]
 
@@ -36,108 +40,114 @@ type_inference.Context.lookup  t n ctx =
     ( _  +: rest) -> go n rest
   match ctx with Context list -> go n list
 
+type_inference.Context.dump : Context -> Text
+type_inference.Context.dump = cases Context list ->
+  Text.join ",\n" (List.map (cases (t, ex) -> t ++ " -> " ++ (utils.printExpression ex)) list)
+
+
 
 type_inference.typeCheck : Context -> Expression -> Either Text Expression
 type_inference.typeCheck = cases ctx -> cases
-  Expression.Constant Constant.Type -> Right (Expression.Constant Constant.Kind)
-  Expression.Constant Constant.Kind -> Right (Expression.Constant Constant.Sort)
+  Constant Type -> Right (Constant Kind)
+  Constant Kind -> Right (Constant Sort)
 
-  Expression.Variable x n -> match Context.lookup x n ctx with
+  Variable x n -> match Context.lookup x n ctx with
     Optional.Some expression -> Right expression
     None -> Left ("Variable " ++ x ++ (if n == zero then "" else "@" ++ (Natural.toDecimalText n)) ++ " is unkonwn")
 
-  Expression.Builtin Builtin.Bool -> Right (Expression.Constant Constant.Type)
-  Expression.Builtin Builtin.True -> Right (Expression.Builtin Builtin.Bool)
-  Expression.Builtin Builtin.False -> Right (Expression.Builtin Builtin.Bool)
+  Builtin Bool -> Right (Constant Type)
+  Builtin True -> Right (Builtin Bool)
+  Builtin False -> Right (Builtin Bool)
 
   -- Naturals
-  Expression.Builtin Builtin.Natural -> Right (Expression.Constant Constant.Type)
-  Expression.Builtin Builtin.NaturalBuild -> Right (
+  Builtin Natural -> Right (Constant Type)
+  Builtin NaturalBuild -> Right (
       Forall "_"
-        (Forall "natural" (Expression.Constant Constant.Type)
+        (Forall "natural" (Constant Type)
           (Forall "succ" (Forall "_" (Variable "natural" zero) (Variable "natural" zero))
           (Forall "zero" (Variable "natural" zero) (Variable "natural" zero))))
-        (Expression.Builtin Builtin.Natural))
-  Expression.Builtin Builtin.NaturalFold -> Right (
-    Forall "_" (Expression.Builtin Builtin.Natural)
-       (Forall "natural" (Expression.Constant Constant.Type)
+        (Builtin Natural))
+  Builtin NaturalFold -> Right (
+    Forall "_" (Builtin Natural)
+       (Forall "natural" (Expression.Constant Type)
           (Forall "succ" (Forall "_" (Variable "natural" zero) (Variable "natural" zero))
             (Forall "zero" (Variable "natural" zero)
               (Variable "natural" zero)))))
-  Expression.Builtin Builtin.NaturalIsZero -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
-  Expression.Builtin Builtin.NaturalEven -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
-  Expression.Builtin Builtin.NaturalOdd -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Bool))
-  Expression.Builtin Builtin.NaturalToInteger -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Integer))
-  Expression.Builtin Builtin.NaturalShow -> Right (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Text))
-  Expression.Builtin Builtin.NaturalSubtract -> Right (Forall "_" (Builtin Builtin.Natural) (Forall "_" (Builtin Builtin.Natural) (Builtin Builtin.Natural)))
+  Builtin NaturalIsZero -> Right (Forall "_" (Builtin Natural) (Builtin Bool))
+  Builtin NaturalEven -> Right (Forall "_" (Builtin Natural) (Builtin Bool))
+  Builtin NaturalOdd -> Right (Forall "_" (Builtin Natural) (Builtin Bool))
+  Builtin NaturalToInteger -> Right (Forall "_" (Builtin Natural) (Builtin Integer))
+  Builtin NaturalShow -> Right (Forall "_" (Builtin Natural) (Builtin Text))
+  Builtin NaturalSubtract -> Right (Forall "_" (Builtin Natural) (Forall "_" (Builtin Natural) (Builtin Natural)))
 
-  NaturalLiteral _ -> Right (Expression.Builtin Builtin.Natural)
+  NaturalLiteral _ -> Right (Builtin Natural)
 
   -- Integer
 
-  Expression.Builtin Builtin.Integer -> Right (Expression.Constant Constant.Type)
-  IntegerLiteral _ -> Right (Expression.Builtin Builtin.Integer)
-  Expression.Builtin Builtin.IntegerShow -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Text))
-  Expression.Builtin Builtin.IntegerToDouble -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Double))
-  Expression.Builtin Builtin.IntegerNegate -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Integer))
-  Expression.Builtin Builtin.IntegerClamp -> Right (Forall "_" (Builtin Builtin.Integer) (Builtin Builtin.Natural))
+  Builtin Integer -> Right (Expression.Constant Type)
+  IntegerLiteral _ -> Right (Builtin Integer)
+  Builtin IntegerShow -> Right (Forall "_" (Builtin Integer) (Builtin Text))
+  Builtin IntegerToDouble -> Right (Forall "_" (Builtin Integer) (Builtin Double))
+  Builtin IntegerNegate -> Right (Forall "_" (Builtin Integer) (Builtin Integer))
+  Builtin IntegerClamp -> Right (Forall "_" (Builtin Integer) (Builtin Natural))
 
   -- Double
 
-  Expression.Builtin Builtin.Double -> Right (Expression.Constant Constant.Type)
-  DoubleLiteral _ -> Right (Expression.Builtin Builtin.Double)
-  Expression.Builtin Builtin.DoubleShow -> Right (Forall "_" (Builtin Builtin.Double) (Builtin Builtin.Text))
+  Builtin Double -> Right (Expression.Constant Type)
+  DoubleLiteral _ -> Right (Builtin Double)
+  Builtin DoubleShow -> Right (Forall "_" (Builtin Double) (Builtin Text))
 
   -- Text
-  Expression.Builtin Builtin.Text -> Right (Expression.Constant Constant.Type)
+  Builtin Text -> Right (Expression.Constant Type)
   TextLiteral (Chunks texs _) ->
     match List.foldLeft (
       cases
         Left err -> '(Left err)
         Right _ -> cases (_, e) -> match typeCheck ctx e with
           Left err -> Left err
-          Right (Builtin Builtin.Text) -> Right (Builtin Builtin.Text)
+          Right (Builtin Text) -> Right (Builtin Text)
           Right t -> Left ("Text interpolation doesn't return type Text, but " ++ (printExpression t)))
-      (Right (Builtin Builtin.Text)) texs with
+      (Right (Builtin Text)) texs with
         Left err -> Left err
-        Right (Builtin Builtin.Text) -> Right (Builtin Builtin.Text)
-  Expression.Builtin Builtin.TextShow -> Right (Forall "_" (Builtin Builtin.Text) (Builtin Builtin.Text))
-  Expression.Builtin Builtin.TextReplace -> Right (
-    Forall "needle" (Builtin Builtin.Text)
-      (Forall "replacement" (Builtin Builtin.Text)
-        (Forall "haystack" (Builtin Builtin.Text) (Builtin Builtin.Text))))
+        Right (Builtin Text) -> Right (Builtin Text)
+  Builtin TextShow -> Right (Forall "_" (Builtin Text) (Builtin Text))
+  Builtin TextReplace -> Right (
+    Forall "needle" (Builtin Text)
+      (Forall "replacement" (Builtin Text)
+        (Forall "haystack" (Builtin Text) (Builtin Text))))
 
   -- Date, Time, Timezone
-  Expression.Builtin Builtin.Date -> Right (Expression.Constant Constant.Type)
-  Expression.Builtin Builtin.Time -> Right (Expression.Constant Constant.Type)
-  Expression.Builtin Builtin.TimeZone -> Right (Expression.Constant Constant.Type)
-  DateLiteral _ -> Right (Expression.Builtin Builtin.Date)
-  TimeLiteral _ -> Right (Expression.Builtin Builtin.Time)
-  TimeZoneLiteral _ -> Right (Expression.Builtin Builtin.TimeZone)
+  Builtin Date -> Right (Expression.Constant Type)
+  Builtin Time -> Right (Expression.Constant Type)
+  Builtin TimeZone -> Right (Expression.Constant Type)
+  DateLiteral _ -> Right (Builtin Date)
+  TimeLiteral _ -> Right (Builtin Time)
+  TimeZoneLiteral _ -> Right (Builtin TimeZone)
 
   -- List
-  Expression.Builtin Builtin.List -> Right (Forall "_" (Constant Constant.Type) (Constant Constant.Type))
+  Builtin List -> Right (Forall "_" (Constant Type) (Constant Type))
   EmptyList T -> match typeCheck ctx T with
     Left err -> Left err
-    Right (Constant Constant.Type) ->
+    Right (Constant Type) ->
       match (betaNormalize T) with
-        t@(Application (Builtin Builtin.List) T) -> Right t
+        t@(Application (Builtin List) T) -> Right t
         t -> Left ("Expected type annotation on empty list to by a List type, but got " ++ (printExpression t))
-    _ -> Left "Element type of list must be a type"
+    _ -> Left "Element type of empty list must be a type"
   NonEmptyList (Nonempty x rest) ->
     match  typeCheck ctx x with
       Left e -> Left e
       Right t ->
         match typeCheck ctx t with
             Left err -> Left err
-            Right (Constant Constant.Type) ->
+            Right (Constant Type) ->
               match List.find (x -> not (Either.mapRight Tuple.at2 x === Right true)) (List.map (x -> Either.mapRight (tx -> ((x, tx), equivalent t tx)) (typeCheck ctx x)) rest) with
                 None -> Right (Application (Builtin List) t)
                 Optional.Some (Right ((x, tx), _)) -> Left ("List contains elements of type " ++ (printExpression t) ++ " and type " ++ (printExpression tx))
                 Optional.Some (Left err) -> Left err
-            _ -> Left "Element type of list must be a type"
+            Right c -> Debug.watch ((printExpression t) ++ " : " ++ (printExpression c) ++ "\n" ++ (Context.dump ctx)) (Left "Element type of list must be a type")
+            -- _ -> Left "Element type of list must be a type"
 
-  Expression.Operator e1 Operator.ListAppend e2 ->
+  Operator e1 ListAppend e2 ->
     match (typeCheck ctx e1, typeCheck ctx e2) with
       (Left err, _) -> Left err
       (_, Left err) -> Left err
@@ -190,21 +200,21 @@ type_inference.typeCheck = cases ctx -> cases
       (Forall "_" (Application (Builtin List) (Variable "a" zero)) (Application (Builtin List) (Variable "a" zero))))
 
   -- Optional
-  Builtin Builtin.Optional -> Right (Forall "_" (Constant Constant.Type) (Constant Constant.Type))
+  Builtin Optional -> Right (Forall "_" (Constant Type) (Constant Type))
 
-  Expression.Some exp ->
+  DhallSome exp ->
     match typeCheck ctx exp with
       Left err -> Left err
       Right t -> match typeCheck ctx t with
-        Right tt | equivalent tt (Constant Constant.Type) -> Right (Application (Builtin Optional) t)
+        Right tt | equivalent tt (Constant Type) -> Right (Application (Builtin Optional) t)
         Right tt -> Left "Argument to Some is not a value"
         Left err -> Left err
 
-  Builtin _None -> Right (Forall "A" (Constant Constant.Type) (Application (Builtin Optional) (Variable "A" zero)))
+  Builtin DhallNone -> Right (Forall "A" (Constant Type) (Application (Builtin Optional) (Variable "A" zero)))
 
   -- Records
 
-  RecordType [] ->  Right (Constant Constant.Type)
+  RecordType [] ->  Right (Constant Type)
   RecordType tExs ->
     typed = List.map (cases (a, ex) -> Either.mapRight (t -> (a, t)) (typeCheck ctx ex)) tExs
     match List.lefts typed with
@@ -216,7 +226,7 @@ type_inference.typeCheck = cases ctx -> cases
           then
             Left "Not all types in the union are types"
           else match List.find (cases (c, nel) -> Nonempty.size nel > 1) (Map.toList (List.groupBy Tuple.at1 tts)) with
-            None -> Right (Constant (List.foldLeft (acc -> cases (_, Constant c) -> upperBound acc c) Constant.Type tts))
+            None -> Right (Constant (List.foldLeft (acc -> cases (_, Constant c) -> upperBound acc c) Type tts))
             Optional.Some (k, _) -> Left ("Duplicate key '" ++ k ++ "' in record type" )
       (h +: _) -> Left h
 
@@ -256,15 +266,19 @@ type_inference.typeCheck = cases ctx -> cases
   ProjectByType expr tExpr -> match typeCheck ctx expr with
     Left err -> Left err
     Right (RecordType tTs) ->
-      match betaNormalize tExpr with
-        tt@(RecordType sTs) ->
-          checkCommonType : Text -> Expression -> Boolean
-          checkCommonType x pt = match List.find (p -> Tuple.at1 p == x) tTs with
-            None -> false
-            Optional.Some p -> equivalent (Tuple.at2 p) pt
-          match List.find (cases (x, t) -> not (checkCommonType x t)) sTs with
-            None -> Right  tt
-            Optional.Some (x, t) -> Left ("Attribute '" ++ x ++ "' is missing in source expression or has different type than in projected type")
+      match typeCheck ctx tExpr with
+        Left err -> Left err
+        Right (Constant _) ->
+          match betaNormalize tExpr with
+            tt@(RecordType sTs) ->
+              checkCommonType : Text -> Expression -> Boolean
+              checkCommonType x pt = match List.find (p -> Tuple.at1 p == x) tTs with
+                None -> false
+                Optional.Some p -> equivalent (Tuple.at2 p) pt
+              match List.find (cases (x, t) -> not (checkCommonType x t)) sTs with
+                None -> Right  tt
+                Optional.Some (x, t) -> Left ("Attribute '" ++ x ++ "' is missing in source expression or has different type than in projected type")
+        Right t -> Left ("Trying to project by type to something that is not a type but " ++ (printExpression t))
     Right tp -> Left ("The projection by type is attempted on something that is not a record but of type " ++ (printExpression tp))
 
   --     With syntax.Expression (Nonempty Text) syntax.Expression
@@ -274,7 +288,7 @@ type_inference.typeCheck = cases ctx -> cases
       Left err -> Left err
       Right vt -> withUpdateType t vt ks
 
-  Expression.Operator e1 Operator.Prefer e2 -> match typeCheck ctx e1 with
+  Operator e1 Prefer e2 -> match typeCheck ctx e1 with
     Left err -> Left err
     Right (RecordType tExs1) -> match typeCheck ctx e2 with
       Left err -> Left err
@@ -284,13 +298,13 @@ type_inference.typeCheck = cases ctx -> cases
       Right _ -> Left "Right operand of ⫽ must be a record"
     Right _ -> Left "Left operand of ⫽ must be a record"
 
-  Expression.Operator e1 Operator.CombineRecordTerms e2 -> match typeCheck ctx e1 with
+  Operator e1 CombineRecordTerms e2 -> match typeCheck ctx e1 with
     Left err -> Left err
     Right t1 -> match typeCheck ctx e2 with
       Left err -> Left err
       Right t2 -> recursivelyMergeRecords t1 t2
 
-  Expression.Operator e1 Operator.CombineRecordTypes e2 -> match typeCheck ctx e1 with
+  Operator e1 CombineRecordTypes e2 -> match typeCheck ctx e1 with
     Left err -> Left err
     Right (Constant c1) -> match typeCheck ctx e2 with
       Left err -> Left err
@@ -307,13 +321,13 @@ type_inference.typeCheck = cases ctx -> cases
         Context tEx -> Context (List.map (cases (k, t) -> (k, shift +1 x zero t)) ((x, t1) +: tEx))
       match typeCheck newCtx t2 with
         Left err -> Left err
-        Right outputType@(Constant c2) -> Right (Expression.Constant (functionCheck c1 c2))
+        Right outputType@(Constant c2) -> Right (Constant (functionCheck c1 c2))
         Right t -> Left ("The output type of the function is not a Type, Kind or Sort, but " ++ (printExpression t))
     Right t -> Left ("The input type of the function is not a Type, Kind or Sort, but " ++ (printExpression t))
 
   -- Unions
 
-  UnionType [] ->  Right (Constant Constant.Type)
+  UnionType [] ->  Right (Constant Type)
   UnionType tExs ->
     match List.find (cases (_, g) -> Nonempty.size g > 1) (Map.toList (List.groupBy Tuple.at1 tExs)) with
       Optional.Some (x, _) -> Left ("Union has more than one attribute with name '" ++ x ++ "'")
@@ -328,7 +342,7 @@ type_inference.typeCheck = cases ctx -> cases
               then
                 Left "Not all types in the union are types"
               else
-                Right (Constant (List.foldLeft (acc -> cases (Constant c) -> upperBound acc c) Constant.Type (List.rights typed)))
+                Right (Constant (List.foldLeft (acc -> cases (Constant c) -> upperBound acc c) Type (List.rights typed)))
           (h +: _) -> Left h
 
   -- Merge syntax.Expression syntax.Expression (Optional syntax.Expression)
@@ -339,7 +353,7 @@ type_inference.typeCheck = cases ctx -> cases
       Left err -> Left err
       Right (UnionType tExs) ->
         mergeReduceType oT tExs handlers
-      Right (Application (Builtin Builtin.Optional) optType) ->
+      Right (Application (Builtin Optional) optType) ->
         mergeReduceType oT [("None", None), ("Some", Some optType)] handlers
       Right t -> Left ("Expected a union alternative as second argument of merge expression, but got something of type " ++ (printExpression t))
     Right _ -> Left "Expected a record of handlers as first argument of merge expression"
@@ -351,7 +365,8 @@ type_inference.typeCheck = cases ctx -> cases
     Right (Constant c) ->
       a1 = betaNormalize a0
       newCtx = match ctx with
-        Context tEx -> Context ((x, a1) +: (List.map (cases (k, t) -> (k, shift +1 x zero t)) tEx))
+        -- Context tEx -> Context ((x, a1) +: (List.map (cases (k, t) -> (k, shift +1 x zero t)) tEx))
+        Context tEx -> Context ((List.map (cases (k, t) -> (k, shift +1 x zero t)) ((x, a1) +: tEx)))
       match typeCheck newCtx b with
         Left err -> Left err
         Right outputType -> Right (Forall x a1 outputType)
@@ -416,16 +431,16 @@ type_inference.typeCheck = cases ctx -> cases
       (None, Optional.Some typ) ->
         match typeCheck ctx typ with
           Left err -> Left err
-          Right (Constant Constant.Type) -> match betaNormalize typ with
-            resultType@(Application (Builtin Builtin.List) (RecordType [("mapKey", (Builtin Builtin.Text)), ("mapValue", _)])) -> Right resultType
+          Right (Constant Type) -> match betaNormalize typ with
+            resultType@(Application (Builtin List) (RecordType [("mapKey", (Builtin Text)), ("mapValue", _)])) -> Right resultType
             _ -> Left "Type annotation of to map must be of form List { mapKey : Text, mapValue : T }"
           Right _ -> Left ("Type annotation of to map must have type Type")
       (Optional.Some nel, oT) -> match head nel with (_, elementType) ->
         match typeCheck ctx elementType with
           Left err -> Left err
-          Right (Constant Constant.Type) ->
+          Right (Constant Type) ->
             if List.all ((equivalent elementType) . Tuple.at2) (Nonempty.tail nel) then
-              resultType = (Application (Builtin Builtin.List) (RecordType [("mapKey", (Builtin Builtin.Text)), ("mapValue", elementType)]))
+              resultType = (Application (Builtin List) (RecordType [("mapKey", (Builtin Text)), ("mapValue", elementType)]))
               match Optional.map (equivalent resultType) oT with
                 Optional.Some false -> Left ("annotated type of toMap doesn't match inferred type")
                 _ -> Right resultType
@@ -436,7 +451,7 @@ type_inference.typeCheck = cases ctx -> cases
   -- T::r -> ((T.default ⫽ r) : T.Type) : U
   Completion tEx rEx -> typeCheck ctx (Annotation (Operator (Field tEx "default") Prefer rEx) (Field tEx "Type"))
 
-  Expression.Operator e1 Equivalent e2 ->
+  Operator e1 Equivalent e2 ->
     match (typeCheck ctx e1, typeCheck ctx e2) with
       (Left err, _) -> Left err
       (_, Left err) -> Left err
@@ -445,11 +460,11 @@ type_inference.typeCheck = cases ctx -> cases
          match (typeCheck ctx te1, typeCheck ctx te2) with
           (Left err, _) -> Left err
           (_, Left err) -> Left err
-          (Right (Constant Constant.Type), Right (Constant Constant.Type)) -> Right (Constant Constant.Type)
+          (Right (Constant Type), Right (Constant Type)) -> Right (Constant Type)
           _ -> Left ("Both operands of === must be terms")
         else Left ("Operands of === have different type")
   -- general operators
-  Expression.Operator e1 op e2 -> typeCheckOperator ctx e1 op e2
+  Operator e1 op e2 -> typeCheckOperator ctx e1 op e2
 
   _ -> Left "TypeError: unknown"
 
@@ -501,13 +516,14 @@ type_inference.mergeReduceType oResultType alternativeTypes handlerTypes =
     (oType, (x, None) +: restAlternatives, (y, typ) +: restHandlers) | x == y -> match Optional.map (equivalent typ) oType with
       Optional.Some false -> Left ("Type for handler for `" ++ x ++ "` is `" ++ (printExpression typ) ++ "`, doesn't match type `" ++ (Optional.getOrElse "" (Optional.map printExpression oType)))
       _ -> go (Some typ, restAlternatives, restHandlers)
-    (oType, (x, Optional.Some altType) +: restAlternatives, (y, Forall z inputType typ) +: restHandlers) | x == y ->
+    (oType, (x, Optional.Some altType) +: restAlternatives, (y, Forall z inputType typ0) +: restHandlers) | x == y ->
       if (equivalent altType inputType) then
+        typ = shift -1 z zero typ0
         match Optional.map (equivalent typ) oType with
           Optional.Some false -> Left ("Type for handler for `" ++ x ++ "` is `" ++ (printExpression typ) ++ "`, doesn't match type `" ++ (Optional.getOrElse "" (Optional.map printExpression oType)))
           _ ->
             -- ensure z not free in typ
-            match filterExpressions (e -> e === Variable z zero) typ with
+            match filterExpressions (e -> e === Variable z zero) typ0 with
               [] -> go (Some typ, restAlternatives, restHandlers)
               _ -> Left ("Variable '" ++ z ++ "' is used in the type of handler for '" ++ x)
       else Left ("Handler for alternative `" ++ x ++ "` doesn't have the correct input type")
@@ -526,12 +542,12 @@ type_inference.typeCheckOperator ctx e1 op e2 =
 
 type_inference.operatorTypes : Operator -> (Expression, Expression, Expression)
 type_inference.operatorTypes = cases
-  Operator.Plus -> (Builtin Natural, Builtin Natural, Builtin Natural)
-  Operator.Times -> (Builtin Natural, Builtin Natural, Builtin Natural)
-  Operator.Or -> (Builtin Bool, Builtin Bool, Builtin Bool)
-  Operator.And -> (Builtin Bool, Builtin Bool, Builtin Bool)
-  Operator.Equal -> (Builtin Bool, Builtin Bool, Builtin Bool)
-  Operator.NotEqual -> (Builtin Bool, Builtin Bool, Builtin Bool)
-  Operator.TextAppend -> (Builtin Text, Builtin Text, Builtin Text)
+  Plus -> (Builtin Natural, Builtin Natural, Builtin Natural)
+  Times -> (Builtin Natural, Builtin Natural, Builtin Natural)
+  Or -> (Builtin Bool, Builtin Bool, Builtin Bool)
+  And -> (Builtin Bool, Builtin Bool, Builtin Bool)
+  Equal -> (Builtin Bool, Builtin Bool, Builtin Bool)
+  NotEqual -> (Builtin Bool, Builtin Bool, Builtin Bool)
+  TextAppend -> (Builtin Text, Builtin Text, Builtin Text)
   -- TODO other operators cannot be handled this way, because of generic parameters
   _ -> (Builtin Natural, Builtin Natural, Builtin Natural)

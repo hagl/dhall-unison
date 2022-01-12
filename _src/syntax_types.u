@@ -1,0 +1,180 @@
+use support
+
+unique type syntax.Expression =
+   -- | > x@n
+  Variable Text Natural
+  | -- | > λ(x : A) → b
+  Lambda Text syntax.Expression syntax.Expression
+  | -- | > ∀(x : A) → B
+  Forall Text syntax.Expression syntax.Expression
+  | -- | > let x : A = a in b
+    --   > let x     = a in b
+  Let Text (Optional syntax.Expression) syntax.Expression syntax.Expression
+  | -- | > if t then l else r
+  If syntax.Expression syntax.Expression syntax.Expression
+  | -- | > merge t u : T
+    -- ^ > merge t u
+  Merge syntax.Expression syntax.Expression (Optional syntax.Expression)
+  | -- | > toMap t : T
+    -- ^ > toMap t
+  ToMap syntax.Expression (Optional syntax.Expression)
+  | -- | > [] : T
+  EmptyList syntax.Expression
+  | -- | > [ t, ts… ]
+  NonEmptyList (Nonempty syntax.Expression)
+  | -- | > t : T
+  Annotation syntax.Expression syntax.Expression
+  | -- | > l □ r
+    Operator syntax.Expression syntax.Operator syntax.Expression
+  | -- | > f a
+    Application syntax.Expression syntax.Expression
+  | -- | > t.x
+    Field syntax.Expression Text
+  | -- | > t.{ xs… }
+    ProjectByLabels syntax.Expression [Text]
+  | -- | > t.(s)
+    ProjectByType syntax.Expression syntax.Expression
+  | -- | > T::r
+    Completion syntax.Expression syntax.Expression
+  | -- | > assert : T
+    Assert syntax.Expression
+  | -- | > e with k.ks… = v
+    With syntax.Expression (Nonempty Text) syntax.Expression
+  | -- | > n.n
+    DoubleLiteral Float -- TODO
+  | -- | > n
+    NaturalLiteral Natural
+  | -- | > ±n
+    IntegerLiteral Integer
+  | -- | > "s"
+    --   > "s${t}ss…"
+    TextLiteral syntax.TextLiteral
+  | DateLiteral Date
+  | TimeLiteral Time
+  | TimeZoneLiteral TimeZone
+  | -- | > {}
+    --   > { k : T, ks… }
+    RecordType [(Text, syntax.Expression)]
+  | -- | > {=}
+    --   > { k = t, ks… }
+    RecordLiteral [(Text, syntax.Expression)]
+  | -- | > <>
+    --   > < k : T | ks… >
+    --   > < k | ks… >
+    UnionType [(Text, Optional syntax.Expression)]
+  | Import syntax.ImportType syntax.ImportMode (Optional syntax.SHA256Digest)
+  | -- | > Some s
+    DhallSome syntax.Expression
+  | Builtin syntax.Builtin
+  | Constant syntax.Constant
+
+
+unique type syntax.TextLiteral = Chunks [(Text, syntax.Expression)] Text
+
+-- | Associative binary operators
+unique type syntax.Operator =
+   -- | > ||
+    Or
+  | -- | > +
+    Plus
+  | -- | > ++
+    TextAppend
+  | -- | > #
+    ListAppend
+  | -- | > &&
+    And
+  | -- | > ∧
+    CombineRecordTerms
+  | -- | > ⫽
+    Prefer
+  | -- | > ⩓
+    CombineRecordTypes
+  | -- | > *
+    Times
+  | -- | > ==
+    Equal
+  | -- | > !=
+    NotEqual
+  | -- | > ===
+    Equivalent
+  | -- | > ?
+    Alternative
+
+unique type syntax.Builtin
+  = NaturalBuild
+  | NaturalFold
+  | NaturalIsZero
+  | NaturalEven
+  | NaturalOdd
+  | NaturalToInteger
+  | NaturalShow
+  | NaturalSubtract
+  | IntegerToDouble
+  | IntegerShow
+  | IntegerNegate
+  | IntegerClamp
+  | DoubleShow
+  | ListBuild
+  | ListFold
+  | ListLength
+  | ListHead
+  | ListLast
+  | ListIndexed
+  | ListReverse
+  | TextShow
+  | TextReplace
+  | Bool
+  | Optional
+  | Natural
+  | Integer
+  | Double
+  | Text
+  | List
+  | True
+  | False
+  | DhallNone
+  | Date
+  | Time
+  | TimeZone
+unique type syntax.Constant
+  = Type
+  | Kind
+  | Sort
+
+-- ^ Directory path components (in reverse order), File name
+unique type syntax.File = File [Text] Text
+
+unique type syntax.FilePrefix
+    = Absolute  -- ^ '/', an absolute path
+    | Here      -- ^ '.', a path relative to the current working directory
+    | Parent    -- ^ '..', a path relative to the parent working directory
+    | Home      -- ^ '~', a path relative to the user's home directory
+
+-- | The URL scheme
+unique type syntax.Scheme
+    = HTTP  -- ^ > http://
+    | HTTPS -- ^ > https://
+
+-- scheme authority path query
+unique type syntax.URL = URL syntax.Scheme Text syntax.File (Optional Text)
+
+-- | How to interpret the path to the import
+unique type syntax.ImportMode
+    = Code      -- ^ The default behavior: import the path as code to interpret
+    | RawText   -- ^ 'as Text': import the path as raw text
+    | Location  -- ^ 'as Location': don't import and instead represent the path as a Dhall expression
+
+unique type syntax.ImportType
+    = Missing
+        -- ^ > missing
+    | Remote syntax.URL (Optional syntax.Expression)
+        -- ^ > https://authority directory file using headers
+    | Path syntax.FilePrefix syntax.File
+        -- ^ > /directory/file
+        --   > ./directory/file
+        --   > ../directory/file
+        --   > ~/directory/file
+    | Env Text
+        -- ^ > env:x
+
+unique type syntax.SHA256Digest = SHA256Digest Bytes

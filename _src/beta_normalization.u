@@ -1,22 +1,26 @@
-use .dhall.trunk.syntax Expression TextLiteral
-use .dhall.trunk.syntax.TextLiteral
+use syntax TextLiteral
+use syntax.TextLiteral Chunks <>
+use syntax Expression
+use syntax.Expression Constant Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin
+use syntax.Operator Or Plus TextAppend ListAppend And CombineRecordTerms Prefer CombineRecordTypes Times Equal NotEqual Equivalent Alternative
+use syntax.Builtin NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool Optional Natural Integer Double Text List True False DhallNone Date Time TimeZone
 
-use Natural 
+use Natural
 
 equivalence.equivalent : Expression -> Expression -> Boolean
-equivalence.equivalent e1 e2 = 
+equivalence.equivalent e1 e2 =
   encodeNormalized e = e |> betaNormalize |> alphaNormalize |> encode |> Term.toBytes
   encodeNormalized e1 === encodeNormalized e2
 
 beta_normalization.without: [a] -> [a] -> [a]
 beta_normalization.without l r = List.filter (x -> not(x `elem` r)) l
 
-beta_normalization.betaNormalize: Expression -> Expression 
-beta_normalization.betaNormalize e = 
+beta_normalization.betaNormalize: Expression -> Expression
+beta_normalization.betaNormalize e =
   normalized = match e with
-    Expression.Constant c -> Expression.Constant c
+    Constant c -> Constant c
     Variable x n -> Variable x n
-    Expression.Builtin b -> Expression.Builtin b
+    Builtin b -> Builtin b
     If t0 l0 r0 ->
       t1 = betaNormalize t0
       l1 = betaNormalize l0
@@ -26,7 +30,7 @@ beta_normalization.betaNormalize e =
         (Builtin False, _, _) -> r1
         (_, Builtin True, Builtin False) -> t1
         _ -> if (equivalent l0 r0) then l1 else If t1 l1 r1
-    Operator l0 Operator.Or r0 ->
+    Operator l0 Or r0 ->
       l1 = betaNormalize l0
       r1 = betaNormalize r0
       match (l1, r1) with
@@ -35,7 +39,7 @@ beta_normalization.betaNormalize e =
         (Builtin True, _) -> Builtin True
         (_, Builtin True) -> Builtin True
         _ -> if (equivalent l0 r0) then l1 else Operator l1 Or r1
-    Operator l0 Operator.And r0 ->
+    Operator l0 And r0 ->
       l1 = betaNormalize l0
       r1 = betaNormalize r0
       match (l1, r1) with
@@ -44,14 +48,14 @@ beta_normalization.betaNormalize e =
         (Builtin False, _) -> Builtin False
         (_, Builtin False) -> Builtin False
         _ -> if (equivalent l0 r0) then l1 else Operator l1 And r1
-    Operator l0 Operator.Equal r0 ->
+    Operator l0 Equal r0 ->
       l1 = betaNormalize l0
       r1 = betaNormalize r0
       match (l1, r1) with
         (Builtin True, _) -> r1
         (_, Builtin True) -> l1
         _ -> if (equivalent l0 r0) then Builtin True else Operator l1 Equal r1
-    Operator l0 Operator.NotEqual r0 ->
+    Operator l0 NotEqual r0 ->
       l1 = betaNormalize l0
       r1 = betaNormalize r0
       match (l1, r1) with
@@ -59,7 +63,7 @@ beta_normalization.betaNormalize e =
         (_, Builtin False) -> l1
         _ -> if (equivalent l0 r0) then Builtin False else Operator l1 NotEqual r1
     NaturalLiteral n -> NaturalLiteral n
-    Operator l0 Operator.Plus r0 ->
+    Operator l0 Plus r0 ->
       l1 = betaNormalize l0
       r1 = betaNormalize r0
       match (l1, r1) with
@@ -67,7 +71,7 @@ beta_normalization.betaNormalize e =
         (NaturalLiteral z, _) | isZero z -> r1
         (_, NaturalLiteral z) | isZero z -> l1
         _ -> Operator l1 Plus r1
-    Operator l0 Operator.Times r0 ->
+    Operator l0 Times r0 ->
       l1 = betaNormalize l0
       r1 = betaNormalize r0
       match (l1, r1) with
@@ -87,13 +91,13 @@ beta_normalization.betaNormalize e =
             match t1 with
               TextLiteral chunks -> ((Chunks [] s0) <> chunks) <> (loop (Chunks ss0 z0))
               _ -> Chunks [(s0, t1)] "" <> loop (Chunks ss0 z0)
-      match loop chunks0 with 
+      match loop chunks0 with
         Chunks [("", t)] "" -> t
         chunks1 -> Expression.TextLiteral chunks1
-    Operator l Operator.TextAppend r -> betaNormalize (Expression.TextLiteral (Chunks [("", l), ("", r)] ""))
+    Operator l TextAppend r -> betaNormalize (Expression.TextLiteral (Chunks [("", l), ("", r)] ""))
     EmptyList T0 -> EmptyList (betaNormalize T0)
     NonEmptyList ts -> NonEmptyList (Nonempty.map betaNormalize ts)
-    Operator ls0 Operator.ListAppend rs0 ->
+    Operator ls0 ListAppend rs0 ->
       ls1 = betaNormalize ls0
       rs1 = betaNormalize rs0
       match (ls1, rs1) with
@@ -111,7 +115,7 @@ beta_normalization.betaNormalize e =
     ProjectByType t0 s0 -> match betaNormalize s0 with
       RecordType ss -> betaNormalize (ProjectByLabels t0 (List.map Tuple.at1 ss))
       s1 -> ProjectByType (betaNormalize t0) s1
-    Operator ls0 Operator.CombineRecordTerms rs0 -> match (betaNormalize ls0, betaNormalize rs0) with
+    Operator ls0 CombineRecordTerms rs0 -> match (betaNormalize ls0, betaNormalize rs0) with
       (RecordLiteral [], rs1) -> rs1
       (ls1, RecordLiteral []) -> ls1
       (RecordLiteral xls, RecordLiteral xrs) ->
@@ -121,7 +125,7 @@ beta_normalization.betaNormalize e =
         combine l r = Operator l CombineRecordTerms r
         betaNormalize(RecordLiteral (List.sortBy Tuple.at1 (Map.toList (Map.unionWith combine ml mr))))
       (ls1, rs1) -> Operator ls1 CombineRecordTerms rs1
-    Operator ls0 Operator.Prefer rs0 -> match (betaNormalize ls0, betaNormalize rs0) with
+    Operator ls0 Prefer rs0 -> match (betaNormalize ls0, betaNormalize rs0) with
       (RecordLiteral [], rs1) -> rs1
       (ls1, RecordLiteral []) -> ls1
       (RecordLiteral xls, RecordLiteral xrs) ->
@@ -133,17 +137,17 @@ beta_normalization.betaNormalize e =
       (Nonempty k [], RecordLiteral kvs) ->
         RecordLiteral (Map.toList (Map.insert k (betaNormalize v0) (Map.fromList kvs)))
       (Nonempty k0 (k1 +: ks1), RecordLiteral kvs) -> match lookup k0 kvs with
-        Optional.Some e1 -> 
+        Optional.Some e1 ->
           e2 = betaNormalize (With e1 (k1 +| ks1) v0)
           RecordLiteral (Map.toList (Map.insert k0 e2 (Map.fromList kvs)))
         None ->
           e1 = betaNormalize (With (RecordLiteral[]) (k1 +| ks1) v0)
           RecordLiteral (Map.toList (Map.insert k0 e1 (Map.fromList kvs)))
       (_, e1) -> With e1 ks0 (betaNormalize v0)
-    Operator ls0 Operator.CombineRecordTypes rs0 -> match (betaNormalize ls0, betaNormalize rs0) with
+    Operator ls0 CombineRecordTypes rs0 -> match (betaNormalize ls0, betaNormalize rs0) with
       (RecordType [], rs1) -> rs1
       (ls1, RecordType []) -> ls1
-      (RecordType xls, RecordType xrs) -> 
+      (RecordType xls, RecordType xrs) ->
         ml = Map.fromList xls
         mr = Map.fromList xrs
         combine : Expression ->{} Expression ->{} Expression
@@ -170,10 +174,10 @@ beta_normalization.betaNormalize e =
       (RecordLiteral xvs, Field (UnionType _xTs₀) x) ->
         match lookup x xvs with
           Optional.Some v -> v
-      (RecordLiteral xvs, Expression.Some a) ->
+      (RecordLiteral xvs, DhallSome a) ->
         match lookup "Some" xvs with
           Optional.Some f -> betaNormalize (Application f a)
-      (RecordLiteral xvs, Application (Builtin _None) _) ->
+      (RecordLiteral xvs, Application (Builtin DhallNone) _) ->
         match lookup "None" xvs with
           Optional.Some v -> v
       (t1, u1) -> Merge t1 u1 (Optional.map betaNormalize T)
@@ -184,21 +188,21 @@ beta_normalization.betaNormalize e =
     TimeZoneLiteral z -> TimeZoneLiteral z
     Forall x A0 B0 -> Forall x (betaNormalize A0) (betaNormalize B0)
     Lambda x A0 b0 -> Lambda x (betaNormalize A0) (betaNormalize b0)
-    Let x _ a0 b0 -> 
+    Let x _ a0 b0 ->
       a1 = shift +1 x zero a0
       b1 = substitute b0 x zero a1
       b2 = shift -1 x zero b1
       betaNormalize b2
     Annotation t0 _T -> betaNormalize t0
     Assert T0 -> Assert (betaNormalize T0)
-    Operator x0 Operator.Equivalent y0 -> Operator (betaNormalize x0) Equivalent (betaNormalize y0)
+    Operator x0 Equivalent y0 -> Operator (betaNormalize x0) Equivalent (betaNormalize y0)
     Application f g ->
       betaNormalizeApplication f g
-    Expression.Some t0 -> Expression.Some (betaNormalize t0)
+    DhallSome t0 -> DhallSome (betaNormalize t0)
   normalized
 
 beta_normalization.betaNormalizeApplication : Expression -> Expression -> Expression
-beta_normalization.betaNormalizeApplication f a =  
+beta_normalization.betaNormalizeApplication f a =
   match (betaNormalize f, a, betaNormalize a) with
   (Builtin NaturalBuild, g, _) -> betaNormalize (
     Application
@@ -219,14 +223,14 @@ beta_normalization.betaNormalizeApplication f a =
       )
       B
     )
-    g, b, b') -> if (Natural.isZero m) 
+    g, b, b') -> if (Natural.isZero m)
       then b'
       else betaNormalize (
         Application g
           (Application
             (Application
               (Application
-                (Application (Builtin NaturalFold) 
+                (Application (Builtin NaturalFold)
                   (NaturalLiteral (m - one))
                 )
                 B
@@ -237,7 +241,7 @@ beta_normalization.betaNormalizeApplication f a =
           )
         )
 
-  (Builtin NaturalIsZero, _, a') -> if a' === NaturalLiteral zero then Builtin True else Builtin False
+  (Builtin NaturalIsZero, _, NaturalLiteral n) -> if n === zero then Builtin True else Builtin False
 
   (Builtin NaturalEven, _, NaturalLiteral m) -> if mod m (one+one) === (Some zero) then Builtin True else Builtin False
   (Builtin NaturalOdd, _, NaturalLiteral m) -> if mod m (one+one) === (Some one) then Builtin True else Builtin False
@@ -254,23 +258,23 @@ beta_normalization.betaNormalizeApplication f a =
       else match (betaNormalize a) with
         NaturalLiteral m | m == zero -> b'
         a' -> Application (Application (Builtin NaturalSubtract) a') b'
-  (Builtin TextShow, _, TextLiteral (Chunks [] s0)) -> Expression.TextLiteral (Chunks [] (escapeText s0))
+  (Builtin TextShow, _, TextLiteral (Chunks [] s0)) -> Expression.TextLiteral (Chunks [] (utils.escapeText s0))
   (Application
         (Application (Builtin TextReplace) (TextLiteral (Chunks [] "")))
         _replacement, _, a) -> a
   (Application
         (Application (Builtin TextReplace) (TextLiteral (Chunks [] needle)))
-        replacement, _, 
-        TextLiteral (Chunks [] haystack)) -> 
+        replacement, _,
+        TextLiteral (Chunks [] haystack)) ->
           loop : [Text] -> TextLiteral
           loop list = match uncons list with
             None -> Chunks [] ""
             Optional.Some (s, []) -> Chunks [] s
-            Optional.Some (s, ss) -> 
-              match loop ss with 
+            Optional.Some (s, ss) ->
+              match loop ss with
                 Chunks xys z -> Chunks ((s, replacement) +: xys) z
           betaNormalize(Expression.TextLiteral (loop (splitOn needle haystack)))
-  (Application (Builtin ListBuild) A0, g, _) -> 
+  (Application (Builtin ListBuild) A0, g, _) ->
     betaNormalize
       (Application
         (Application
@@ -325,12 +329,12 @@ beta_normalization.betaNormalizeApplication f a =
               )
   (Application (Builtin ListLength) A0, _, EmptyList A1) -> NaturalLiteral zero
   (Application (Builtin ListLength) A0, _, NonEmptyList as) -> NaturalLiteral (Natural.fromNat (Nonempty.size as))
-  (Application (Builtin ListHead) A0, _, EmptyList A1) -> Application (Builtin _None) A0
-  (Application (Builtin ListHead) A0, _, NonEmptyList (Nonempty a _)) -> Some a
-  (Application (Builtin ListLast) A0, _, EmptyList A1) -> Application (Builtin _None) A0
-  (Application (Builtin ListLast) A0, _, NonEmptyList as) -> Some (Nonempty.last as)
+  (Application (Builtin ListHead) A0, _, EmptyList A1) -> Application (Builtin DhallNone) A0
+  (Application (Builtin ListHead) A0, _, NonEmptyList (Nonempty a _)) -> DhallSome a
+  (Application (Builtin ListLast) A0, _, EmptyList A1) -> Application (Builtin DhallNone) A0
+  (Application (Builtin ListLast) A0, _, NonEmptyList as) -> DhallSome (Nonempty.last as)
   (Application (Builtin ListIndexed) A0, _, EmptyList A1) -> EmptyList (Application (Builtin List) (RecordType [("index", Builtin Natural), ("value", A0)]))
-  (Application (Builtin ListIndexed) A0, _, NonEmptyList (Nonempty a as)) -> 
+  (Application (Builtin ListIndexed) A0, _, NonEmptyList (Nonempty a as)) ->
     combine : Nat ->{} Expression ->{} Expression
     combine ix value = RecordLiteral [("index", NaturalLiteral (Natural.fromNat ix)), ("value", value)]
     NonEmptyList (Nonempty (combine 0 a) (List.zipWith combine (List.range 1 (List.size as Nat.+ 1)) as))
@@ -353,13 +357,13 @@ beta_normalization.betaNormalizeApplication f a =
   (f, _, g') -> Application f g'
 
 beta_normalization.betaNormalizeField : Expression -> Text -> Expression
-beta_normalization.betaNormalizeField t x = 
+beta_normalization.betaNormalizeField t x =
   t1 = betaNormalize t
   match t1 with
   RecordLiteral xvs -> match lookup x xvs with
     None -> Field t1 x
     Optional.Some v -> v
-  ProjectByLabels t1 _xs -> betaNormalize (Field t1 x) 
+  ProjectByLabels t1 _xs -> betaNormalize (Field t1 x)
   Operator (RecordLiteral xvs) Prefer t1 -> match lookup x xvs with
     None -> betaNormalize (Field t1 x)
     Optional.Some v -> Field (Operator (RecordLiteral [(x, v)]) Prefer t1) x

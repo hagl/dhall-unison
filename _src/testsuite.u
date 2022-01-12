@@ -1,7 +1,9 @@
-use syntax
+use syntax Expression
 use binary
 use binary Term
 use syntax.Constant
+use syntax.Expression EmptyList NonEmptyList RecordLiteral TextLiteral
+use syntax.TextLiteral Chunks
 use support.Integer Integer
 use utils
 use type_inference
@@ -31,13 +33,15 @@ testsuite.runTestsRecursive testDirectory testSuffix testRunner =
   fp = FilePath.FilePath testDirectory
   contents = io.directoryContents fp
   tests = filterMap (removeSuffix testSuffix) contents
+  -- tests = filter ((==) "RecordProjectionByTypeJudgmentalEquality") (filterMap (removeSuffix testSuffix) contents)
   isSubfolder f =
     path = testDirectory ++ "/" ++ f
     if io.isDirectory (FilePath.FilePath path) && (f != ".") && (f != "..") then Some(path) else None
   subdirs = filterMap isSubfolder contents
   test t =
     result = testRunner testDirectory t
-    printLine ((if result then "✅" else "🚫")++ " " ++ t)
+    -- printLine ((if result then "✅" else "🚫")++ " " ++ t)
+    if result then () else printLine ("🚫 " ++ t)
     if (result) then (1, 0) else (0, 1)
   folderTestResult = List.foldLeft (acc -> t -> updateResults acc (test t)) (0, 0) tests
   result = List.foldLeft (acc -> d -> updateResults acc (runTestsRecursive d testSuffix testRunner)) folderTestResult subdirs
@@ -56,6 +60,12 @@ testsuite.encodeExpression : Expression -> Bytes
 testsuite.encodeExpression expression =
   encoded = encode expression
   Term.toBytes encoded
+
+testsuite.printOptional : Optional Expression -> Text
+testsuite.printOptional optEx = Optional.fold '("None") printExpression optEx
+
+testsuite.printEither : Either Text Expression -> Text
+testsuite.printEither = Either.fold (t -> "Left: " ++ t) printExpression
 
 testsuite.parseSuccessTest : Text -> Text -> Boolean
 testsuite.parseSuccessTest testDir name =
@@ -99,39 +109,56 @@ testsuite.alphaNormalizationTest testDir name =
   result = bytes === checkBytes
   if (result) then true
   else
-    print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
-    printLine("Normalized:\n" ++ (print normalized))
-    printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+    printLine("Normalized:\n" ++ (printOptional normalized))
+    printLine("Correct:\n" ++ (printEither (parseTestcase checkPath)))
     false
 
 testsuite.normalizationTest : Text -> Text -> Boolean
 testsuite.normalizationTest testDir name =
   use Text
   testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")
+  dirs = List.reverse (utils.splitOn "/" (testDir))
   use .dhall.trunk.alpha_normalization
   use .dhall.trunk.utils
-  normalized = Optional.map betaNormalize (Either.right (parseTestcase testPath))
+
+  normalized = match parseTestcase testPath with
+    Left err -> Debug.watch ("Parse error : " ++ err) None
+    Right parsed ->
+      match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
+        Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
+        Right resolved -> Optional.Some (betaNormalize resolved)
+
   bytes = Optional.map encodeExpression normalized
   checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")
   checkBytes = Optional.map encodeExpression (Either.right (parseTestcase checkPath))
   result = bytes === checkBytes
   if (result) then true
   else
-    print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
-    printLine("Normalized:\n" ++ (print normalized))
-    printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+    printLine("Normalized:\n" ++ (printOptional normalized))
+    printLine("Correct:\n" ++ (printEither (parseTestcase checkPath)))
     false
 
 testsuite.typeInferenceTest : Text -> Text -> Boolean
 testsuite.typeInferenceTest testDir name =
   use Text
   testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")
+  dirs = List.reverse (utils.splitOn "/" (testDir))
   use type_inference
   use .dhall.trunk.utils
-  print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
 
-  parsedOpt = Either.right (parseTestcase testPath)
-  inferredType = match parsedOpt with
+  resolvedOpt =
+    if name == "prelude" -- prelude test takes multiple hours
+    then None
+    else
+      match parseTestcase testPath with
+        Left err -> Debug.watch ("Parse error : " ++ err) None
+        Right parsed ->
+          match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
+            Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
+            Right resolved -> Optional.Some resolved
+            -- Right resolved -> Optional.Some (betaNormalize resolved)
+
+  inferredType = match resolvedOpt with
     None -> None
     Optional.Some parsed ->
       match typeCheck Context.empty parsed with
@@ -147,13 +174,13 @@ testsuite.typeInferenceTest testDir name =
       result = bytes === checkBytes
       if (result) then true
       else
-        printLine("Type:\n" ++ (print inferredType))
-        printLine("Correct:\n" ++ (print (Either.right (parseTestcase checkPath))))
+        printLine("Type:\n" ++ (printOptional inferredType))
+        printLine("Correct:\n" ++ (printEither (parseTestcase checkPath)))
         false
 
 testsuite.typeInferenceFailureTest : Text -> Text -> Boolean
 testsuite.typeInferenceFailureTest testDir name =
-  testPath = Debug.watch (name) FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")
   print optEx = Optional.getOrElse "None" (Optional.map printExpression optEx)
 
   match parseTestcase testPath with
@@ -163,6 +190,69 @@ testsuite.typeInferenceFailureTest testDir name =
         Right t -> Debug.watch ("Expected type error, but got  " ++ printExpression t) false
         Left _ -> true
 
+testsuite.semanticHashTest : Text -> Text -> Boolean
+testsuite.semanticHashTest testDir name =
+  use Text
+  use type_inference
+  use .dhall.trunk.utils
+  dirs = List.reverse (utils.splitOn "/" (testDir))
+  hash = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")) with
+    Left err -> Debug.watch ("Parse error : " ++ err) None
+    Right parsed ->
+      match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
+        Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
+        Right resolved -> Optional.Some ("sha256:" ++ (import.hashExpressionToText resolved))
+
+  use Text
+  checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.hash")
+  check = io.openFile checkPath FileMode.Read
+  checkBytes = getBytes check (base.io.getFileSize checkPath)
+  checkHash = Text.trim (Text.fromUtf8 checkBytes)
+  io.closeFile check
+  success = Optional.map ((Text.==) checkHash) hash === Some true
+  success
+
+testsuite.binaryDecodeSuccessTest : Text -> Text -> Boolean
+testsuite.binaryDecodeSuccessTest testDir name =
+  use Text
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhallb")
+  inputBytes =
+    bracket
+      '(openFile (testPath) Read)
+      closeFile
+      (fileHandle -> (getBytes fileHandle (base.io.getFileSize testPath)))
+  decodedExpression = match binary.Term.fromBytes inputBytes with
+    Left err ->
+      printLine ("Decoding error: " ++ err)
+      Left err
+    Right decoded -> binary.decodeTerm decoded
+  checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")
+  checkExpression = parseTestcase checkPath
+  if decodedExpression === checkExpression
+    then true
+    else
+      printLine("Actual:\n" ++ (printEither decodedExpression))
+      printLine("Correct:\n" ++ (printEither checkExpression))
+      false
+
+testsuite.binaryDecodeFailureTest : Text -> Text -> Boolean
+testsuite.binaryDecodeFailureTest testDir name =
+  use Text
+  testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhallb")
+  inputBytes =
+    bracket
+      '(openFile (testPath) Read)
+      closeFile
+      (fileHandle -> (getBytes fileHandle (base.io.getFileSize testPath)))
+  decodedExpression = match binary.Term.fromBytes inputBytes with
+    Left err ->
+      Left err
+    Right decoded -> binary.decodeTerm decoded
+  if Either.isLeft decodedExpression
+    then true
+    else
+      printLine("Expected decoding error but got :\n" ++ (printEither decodedExpression))
+      false
 
 {{ {perfTest} measures the time needed to parse the type of the Dhall prelude, which is around 700 lines of Dhall code.
 
@@ -183,21 +273,160 @@ testsuite.perfTest _ =
       result = parseTestcase path
       duration = !systemTimeMicroseconds - startTime
       msg = match result with
-        Left _ -> "Parse failure in " ++ (Int.toText duration) ++ "μs"
-        Right _ -> "Parsed successfully in " ++ (Int.toText duration) ++ "μs"
+        Left _ -> "Parse failure in " ++ (durationToText duration)
+        Right _ -> "Parsed successfully in " ++ (durationToText duration)
       printLine msg
 
+-- import.mapTextTextType = Application (Builtin List) (RecordType [("mapKey", Builtin Text), ("mapValue", Builtin Text)])
+
+import.dhallMapToUnison: Expression -> Either Text (Map Text Text)
+import.dhallMapToUnison = cases
+  EmptyList _ -> Right Map.empty
+  NonEmptyList list ->
+      match List.partitionEithers (List.map (cases
+        RecordLiteral [("mapKey", TextLiteral (Chunks [] key)), ("mapValue", TextLiteral (Chunks [] value))] -> Right (key, value)
+        _ -> Left "Error converting map") (Nonempty.toList list)) with
+      ([], rights) -> Right (Map.fromList rights)
+      (h +: _, _) -> Left h
+  _ -> Left "Error converting map, not a list"
+
+testsuite.importTest : FilePath -> Text -> Text ->{IO, Exception} Boolean
+testsuite.importTest cacheDir testDir name =
+  -- if not (name == "originHeaders") then false else
+    use Text
+    dirs = List.reverse (utils.splitOn "/" (testDir))
+    use type_inference
+    use .dhall.trunk.utils
+    envPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "ENV.dhall")
+    env =
+      if fileExists envPath
+        then
+          match parseTestcase envPath with
+          Left err -> Debug.watch ("Error parsing env " ++ err) (Left err)
+          Right parsed ->
+            match
+              import.readOnlyCache cacheDir
+                '(import.mapEnvironment Map.empty '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
+                    '(import.resolve (Path Here (File dirs (name ++ "Env.dhall"))) parsed)))) with
+              Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) Left msg
+              Right resolved -> dhallMapToUnison (betaNormalize resolved)
+        else
+          Right (Map.singleton "DHALL_TEST_VAR" "6 * 7")
+
+    match env with
+      Left err -> false
+      Right map ->
+        errOrLoader : (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
+        errOrLoader =
+          import.readOnlyCache cacheDir
+            '(import.mapEnvironment map '(import.defaultFileLoader
+                '(setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
+        match errOrLoader with
+          -- Left err ->
+            Left msg -> Debug.watch ("Error setting up loader : " ++ msg) false
+            Right loader ->
+              import.readOnlyCache cacheDir
+                '(import.mapEnvironment map '(import.defaultFileLoader '(loader '(importTestCheck testDir name dirs))))
+
+testsuite.importTestCheck testDir name dirs =
+  normalizedExpressionA = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")) with
+    Left err -> Debug.watch ("Parse error : " ++ err) None
+    Right parsed ->
+      match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
+        Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
+        Right resolved -> Optional.Some (betaNormalize resolved)
+
+  normalizedExpressionB = match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhall")) with
+    Left err -> Debug.watch ("Parse error : " ++ err) None
+    Right parsed ->
+      match import.resolve (Path Here (File dirs (name ++ "B.dhall"))) parsed with
+        Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) None
+        Right resolved -> Optional.Some (betaNormalize resolved)
+
+  if normalizedExpressionA === normalizedExpressionB
+    then true
+    else
+      printLine("Actual:\n" ++ (printOptional normalizedExpressionA))
+      printLine("Correct:\n" ++ (printOptional normalizedExpressionB))
+      false
+
+testsuite.importFailureTest cacheDir testDir name =
+  -- originHeadersFromRemoteENV is not a failure test but the header configuration for originHeadersFromRemote
+  if (name == "originHeadersFromRemoteENV") then true else
+    use Text
+    dirs = List.reverse (utils.splitOn "/" (testDir))
+    use type_inference
+    use .dhall.trunk.utils
+    envPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "ENV.dhall")
+    env =
+      if fileExists envPath
+        then
+          match parseTestcase envPath with
+          Left err -> Debug.watch ("Error parsing env " ++ err) (Left err)
+          Right parsed ->
+            match
+              import.readOnlyCache cacheDir
+                '(import.mapEnvironment Map.empty '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
+                    '(import.resolve (Path Here (File dirs (name ++ "Env.dhall"))) parsed)))) with
+              Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) Left msg
+              Right resolved -> dhallMapToUnison (betaNormalize resolved)
+        else
+          Right (Map.singleton "DHALL_TEST_VAR" "6 * 7")
+
+    match env with
+      Left err -> Debug.watch ("Error setting up evn: " ++ err ++ "(considered success)") true
+      Right map ->
+        errOrLoader : (Either Text ('{RemoteLoader, IO, Exception, g} b ->{IO, Exception, g} b))
+        errOrLoader =
+          import.readOnlyCache cacheDir
+            '(import.mapEnvironment map '(import.defaultFileLoader
+                '(setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
+        match errOrLoader with
+          -- Left err ->
+            Left msg -> Debug.watch ("Error setting up loader : " ++ msg) true
+            Right loader ->
+              import.readOnlyCache cacheDir
+                '(import.mapEnvironment map '(import.defaultFileLoader '(loader '(importFailureTestCheck testDir name dirs))))
+
+testsuite.importFailureTestCheck testDir name dirs =
+  match parseTestcase (FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")) with
+    Left err ->
+      printLine ("Parse failure " ++ err)
+      false
+    Right parsed ->
+      match import.resolve (Path Here (File dirs (name ++ "A.dhall"))) parsed with
+        Left msg -> true
+        Right resolved ->
+          printLine ("Expected resolve failure, but got " ++ printExpression resolved)
+          false
+
+testsuite.runTests : Text ->{IO, Exception} ()
 testsuite.runTests path =
-  total = List.foldLeft updateResults (0,0) [
-    runTestsRecursive  (path ++ "/tests/parser/success") "A.dhall" parseSuccessTest,
-    runTestsRecursive  (path ++ "/tests/parser/failure") ".dhall" parseFailureTest,
-    runTestsRecursive  (path ++ "/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
-    runTestsRecursive  (path ++ "/tests/normalization") "A.dhall" normalizationTest,
-    -- runTestsRecursive  (path ++ "/tests/type-inference/success/unit") "A.dhall" typeInferenceTest,
-    runTestsRecursive  (path ++ "/tests/type-inference/success") "A.dhall" typeInferenceTest,
-    runTestsRecursive  (path ++ "/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
-  ]
-  printTestStatus path total
+  origDirectory = !io.getCurrentDirectory
+  withDefaultLoader : ('{RemoteLoader, EnvLoader, Cache, LocalLoader, g} b) -> {g, Exception, IO} b
+  withDefaultLoader f =
+    import.mapEnvironment Map.empty
+      '(import.defaultFileLoader '(import.defaultHeaderRemoteLoader Map.empty
+          '(import.withoutCache f)))
+  startTime = !systemTimeMicroseconds
+  bracket
+    '(io.setCurrentDirectory (FilePath (path ++ "/..")))
+    '(io.setCurrentDirectory origDirectory)
+    '(printTestStatus path (List.foldLeft updateResults (0,0) [
+          runTestsRecursive  ("./dhall-lang/tests/parser/success") "A.dhall" parseSuccessTest,
+          runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
+          runTestsRecursive  ("./dhall-lang/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
+          withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
+          withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),
+          runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
+          runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          runTestsRecursive  ("./dhall-lang/tests/import/failure") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest),
+          runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
+          runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,
+        ]))
+  duration = !systemTimeMicroseconds - startTime
+  printLine ("Duration: " ++ (durationToText duration))
 
 
 {{ {runTestSuite} will run the [Dhall acceptance tests](https://github.com/dhall-lang/dhall-lang/tree/master/tests)
@@ -222,3 +451,5 @@ testsuite.runTestSuite _ =
     None -> printLine "Usage: run runTestSuite <path to local copy of https://github.com/dhall-lang/dhall-lang>"
     Some path -> runTests path |> '()
 
+utils.durationToText: Int -> Text
+utils.durationToText duration = Float.toText (Int.toFloat (duration / +1000) / 1000.0) ++ "s"

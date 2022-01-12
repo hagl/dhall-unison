@@ -1,156 +1,20 @@
-use .dhall.trunk.support
-
-unique type syntax.Expression = 
-   -- | > x@n
-  Variable Text Natural
-  | -- | > λ(x : A) → b
-  Lambda Text syntax.Expression syntax.Expression
-  | -- | > ∀(x : A) → B
-  Forall Text syntax.Expression syntax.Expression
-  | -- | > let x : A = a in b
-    --   > let x     = a in b
-  Let Text (Optional syntax.Expression) syntax.Expression syntax.Expression
-  | -- | > if t then l else r
-  If syntax.Expression syntax.Expression syntax.Expression
-  | -- | > merge t u : T
-    -- ^ > merge t u
-  Merge syntax.Expression syntax.Expression (Optional syntax.Expression)
-  | -- | > toMap t : T
-    -- ^ > toMap t
-  ToMap syntax.Expression (Optional syntax.Expression)
-  | -- | > [] : T
-  EmptyList syntax.Expression
-  | -- | > [ t, ts… ]
-  NonEmptyList (Nonempty syntax.Expression)
-  | -- | > t : T
-  Annotation syntax.Expression syntax.Expression
-  | -- | > l □ r
-    Operator syntax.Expression syntax.Operator syntax.Expression
-  | -- | > f a
-    Application syntax.Expression syntax.Expression
-  | -- | > t.x
-    Field syntax.Expression Text
-  | -- | > t.{ xs… }
-    ProjectByLabels syntax.Expression [Text]
-  | -- | > t.(s)
-    ProjectByType syntax.Expression syntax.Expression
-  | -- | > T::r
-    Completion syntax.Expression syntax.Expression
-  | -- | > assert : T
-    Assert syntax.Expression
-  | -- | > e with k.ks… = v
-    With syntax.Expression (Nonempty Text) syntax.Expression
-  | -- | > n.n
-    DoubleLiteral Float -- TODO
-  | -- | > n
-    NaturalLiteral Natural
-  | -- | > ±n
-    IntegerLiteral Integer
-  | -- | > "s"
-    --   > "s${t}ss…"
-    TextLiteral syntax.TextLiteral
-  | DateLiteral Date
-  | TimeLiteral Time
-  | TimeZoneLiteral TimeZone
-  | -- | > {}
-    --   > { k : T, ks… }
-    RecordType [(Text, syntax.Expression)]
-  | -- | > {=}
-    --   > { k = t, ks… }
-    RecordLiteral [(Text, syntax.Expression)]
-  | -- | > <>
-    --   > < k : T | ks… >
-    --   > < k | ks… >
-    UnionType [(Text, Optional syntax.Expression)]
-  -- | Import ImportType ImportMode (Optional (Digest SHA256))
-  | -- | > Some s
-    Some syntax.Expression
-  | Builtin syntax.Builtin
-  | Constant syntax.Constant  
-
-
-unique type syntax.TextLiteral = Chunks [(Text, syntax.Expression)] Text
-
--- | Associative binary operators
-unique type syntax.Operator =
-   -- | > ||
-    Or
-  | -- | > +
-    Plus
-  | -- | > ++
-    TextAppend
-  | -- | > #
-    ListAppend
-  | -- | > &&
-    And
-  | -- | > ∧
-    CombineRecordTerms
-  | -- | > ⫽
-    Prefer
-  | -- | > ⩓
-    CombineRecordTypes
-  | -- | > *
-    Times
-  | -- | > ==
-    Equal
-  | -- | > !=
-    NotEqual
-  | -- | > ===
-    Equivalent
-  | -- | > ?
-    Alternative
-
-unique type syntax.Builtin
-  = NaturalBuild
-  | NaturalFold
-  | NaturalIsZero
-  | NaturalEven
-  | NaturalOdd
-  | NaturalToInteger
-  | NaturalShow
-  | NaturalSubtract
-  | IntegerToDouble
-  | IntegerShow
-  | IntegerNegate
-  | IntegerClamp
-  | DoubleShow
-  | ListBuild
-  | ListFold
-  | ListLength
-  | ListHead
-  | ListLast
-  | ListIndexed
-  | ListReverse
-  | TextShow
-  | TextReplace
-  | Bool
-  | Optional
-  | Natural
-  | Integer
-  | Double
-  | Text
-  | List
-  | True
-  | False
-  | _None
-  | Date
-  | Time
-  | TimeZone    
-unique type syntax.Constant 
-  = Type
-  | Kind
-  | Sort
+use support
+use syntax TextLiteral
+use syntax.TextLiteral Chunks
+use syntax.Constant
+use syntax Expression
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
 
 (syntax.TextLiteral.<>) : TextLiteral -> TextLiteral -> TextLiteral
 tl1 syntax.TextLiteral.<> tl2 = match tl1 with
   Chunks xys0 z0 -> match tl2 with
-    Chunks xys1 z1 -> match unsnoc xys1 with
+    Chunks xys1 z1 -> match uncons xys1 with
       None -> Chunks xys0 (z0 Text.++ z1)
-      Optional.Some (t, (x1, y1)) -> Chunks (xys0 List.++ ((z0 Text.++ x1, y1) List.+: t)) z1
-
+      Optional.Some ((x1, y1), t) -> Chunks (xys0 List.++ ((z0 Text.++ x1, y1) List.+: t)) z1
+---
 syntax.addTextToTextLiteral : Text -> TextLiteral -> TextLiteral
 syntax.addTextToTextLiteral t = cases (Chunks l x) -> Chunks l (x Text.++ t)
--- 
+--
 syntax.addExpresionToTextLiteral : syntax.Expression -> TextLiteral -> TextLiteral
 syntax.addExpresionToTextLiteral e = cases (Chunks l x) -> Chunks (l List.++ [(x, e)]) ""
 
@@ -163,7 +27,7 @@ syntax.splitOn needle haystack =
 
 -- -- | Split `Chunks` by lines
 syntax.linesLiteral : TextLiteral -> Nonempty TextLiteral
-syntax.linesLiteral = cases 
+syntax.linesLiteral = cases
   (Chunks [] suffix) -> Nonempty.map (t -> Chunks [] t) (splitOn ?\n suffix)
   (Chunks ((prefix, interpolation) +: pairs0) suffix0) ->
     splitLines = splitOn ?\n prefix
@@ -191,7 +55,7 @@ syntax.emptyLine = cases
 
 -- | Return the leading whitespace for a `Chunks` literal
 syntax.leadingSpaces : TextLiteral -> [Char]
-syntax.leadingSpaces chunks = 
+syntax.leadingSpaces chunks =
   isSpace c = (c == ?\s) || (c == ?\t)
   firstText = match chunks with
     Chunks [] suffix -> suffix
@@ -300,4 +164,36 @@ syntax.reservedIdentifiers = Set.union reservedKeywords (Set.fromList
   , "Type"
   , "Kind"
   , "Sort"
-  ]
+  ])
+
+syntax.filterExpressions : (Expression -> Boolean) -> Expression -> [Expression]
+syntax.filterExpressions p expression =
+  go : Expression -> [Expression]
+  go ex =
+    f = List.filter p
+    (if p ex then [ex]  else [])  ++
+    match ex with
+      Lambda x A b -> f [A, b]
+      Forall x A B -> f [A, B]
+      Let x t a b-> f (Optional.toList t ++ [a, b])
+      If t l r -> f [t, l, r]
+      Merge t u ot -> f (Optional.toList ot ++ [t, u])
+      ToMap t ot -> f (Optional.toList ot ++ [t])
+      EmptyList T -> f [T]
+      NonEmptyList ts -> f (Nonempty.toList ts)
+      Annotation t T -> f [t, T]
+      Operator l op r -> f [l, r]
+      Application a b -> f [a, b]
+      Field t y -> f [t]
+      ProjectByLabels t xs -> f [t]
+      ProjectByType t T -> f [t, T]
+      Completion T r -> f [T, r]
+      Assert T -> f [T]
+      With e ks v -> f [e, v]
+      TextLiteral (Chunks xys z) -> f (List.map Tuple.at2 xys)
+      RecordType ks -> f (List.map Tuple.at2 ks)
+      RecordLiteral ks -> f (List.map Tuple.at2 ks)
+      UnionType ks -> f (List.filterMap Tuple.at2 ks)
+      DhallSome a -> f [a]
+      _ -> []
+  go expression
