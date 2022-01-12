@@ -75,13 +75,13 @@ let configs : List Config =
 in  configs
 ```
 
-Assume we want to use above Dhall programm to generate a list of Unison UserConfig values
+Assume we want to use the above Dhall program to generate a list of Unison UserConfig values
 ```unison
 unique type UserConfig = UserConfig Text Text Text
 ```
 
 This mapping function converts the evaluated DhallValue into UserConfig by pattern matching on the structure.
-Since the Dhall typechecker verifies that the result has the correct structure, we can use non-exhaustive pattern matching:
+Since the Dhall type-checker verifies that the result has the correct structure, we can use non-exhaustive pattern matching:
 
 ```unison
 convertConfigs : DhallValue -> List UserConfig
@@ -109,20 +109,20 @@ This example is also available online on [Unison Share][unison-share-hagl-dhall]
 
 ### Example 2: Evaluating Dhall code in ucm
 
-This library also ships an unsupported runnable `dhallRun` function that can be used to quickly evaluate a dhall expression directly from `ucm`.
+This library also ships an unsupported runnable `dhallRun` function that can be used to quickly test a dhall expression directly from `ucm`.
 
-The implementation use a bit of a hack to not require quoting or escaping dhall code inside ucm.
-For example you can do the following:
+The implementation uses a bit of a hack to not require quoting or escaping dhall code inside ucm.
+Here are a few examples what you can do:
 
-Simple calculations:
+Simple calculations
 ```
 .> run dhallRun 47 * 71
 3337
 ```
 
-Text interpolation, access to environment variables and calling built-in fuctions
+Text interpolation, access to environment variables and calling built-in functions
 ```
-.> run dhallRun "Hello ${env:USER as Text}! \n 3 + 4 = ${Natural/show (3 + 4)}"
+.> run dhallRun "Hello ${env:USER as Text}!\n 3 + 4 = ${Natural/show (3 + 4)}"
 "Hello harald!
  3 + 4 = 7"
 ```
@@ -133,9 +133,9 @@ Defining and applying functions
 3
 ```
 
-Using remote dhall expressions (fold from Dhall prelude)
+Using remote dhall expressions (e.g. fold from Dhall prelude)
 ```
-.> run dhallRun let add = \(x: Natural) -> \(y: Natural) -> x + y let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall Natural l Natural add 0 in sum [1,2,3,4,5]
+.> run dhallRun let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall Natural l Natural (\(x: Natural) -> \(y: Natural) -> x + y)  0 in sum [1,2,3,4,5]
 15
 ```
 
@@ -145,10 +145,10 @@ Loading and evaluating the remote expression takes some time. By adding a semant
 .> run dhallRun https://prelude.dhall-lang.org/List/fold.dhall
 sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814
 
-.> run dhallRun let add = \(x: Natural) -> \(y: Natural) -> x + y let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural add 0 in sum [1,2,3,4,5]
+.> run dhallRun let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural (\(x: Natural) -> \(y: Natural) -> x + y)  0 in sum [1,2,3,4,5]
 15
 
-.> run dhallRun let add = \(x: Natural) -> \(y: Natural) -> x + y let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural add 0 in sum [1,2,3,4,5]
+.> run dhallRun let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural (\(x: Natural) -> \(y: Natural) -> x + y)  0 in sum [1,2,3,4,5]
 15
 ```
 
