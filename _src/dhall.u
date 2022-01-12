@@ -23,16 +23,43 @@ unique type DhallValue =
   | DhallRecord (Map Text DhallValue)
   | DhallOptional (Optional DhallValue)
 
-DhallValue.printExpression = cases
-    DhallList values -> "[" ++ (Text.join ", " (List.map printExpression values)) ++ "]"
+DhallValue.printExpression =
+  go prefix = cases
     DhallBoolean b -> if b then "true" else "false"
     DhallFloat f -> Float.toText f
     DhallNatural n -> Natural.toDecimalText n
     DhallInteger (Integer b n) -> (if b then "-" else "") ++ (Natural.toDecimalText n)
-    DhallText t -> t
-    DhallRecord m -> "{" ++ (Text.join "\n  " (List.map (cases (k,v) -> k ++ " = " ++ (printExpression v)) (Map.toList m))) ++ "}"
+    DhallText t -> "\"" ++ t ++ "\""
+    DhallList [] -> "[]"
+    DhallList values@(h +: _) ->
+      inline = match h with
+        DhallBoolean _ -> true
+        DhallFloat _ -> true
+        DhallNatural _ -> true
+        DhallInteger _ -> true
+        _ -> false
+      if inline
+        then
+          "[" ++ (Text.join ", " (List.map (go prefix) values)) ++ "]"
+        else "[ " ++ (Text.join ("\n" ++ prefix ++ ", ") (List.map (go (prefix ++ "  ")) values)) ++ " ]"
+    DhallRecord m -> match Map.toList m with
+      [] -> "{}"
+      l ->
+        inline = List.size l < 5 && List.all (cases
+          (_, DhallBoolean _) -> true
+          (_, DhallFloat _) -> true
+          (_, DhallNatural _) -> true
+          (_, DhallInteger _) -> true
+          _ -> false) l
+        if inline
+          then
+            "{" ++ (Text.join ", " (List.map (cases (k,v) -> k ++ " = " ++ (go "" v)) l)) ++ "}"
+          else
+            "{ " ++ (Text.join ("\n" ++ prefix ++ ", ") (List.map (cases (k,v) -> k ++ " = " ++ (go (prefix ++ (Text.repeat (Text.size k + 5) " ")) v)) l)) ++ " }"
     DhallOptional None -> "None"
-    DhallOptional (Optional.Some v) -> "Some" ++ (printExpression v)
+    DhallOptional (Optional.Some v) -> "Some " ++ (go prefix v)
+  go ""
+
 
 DhallValue.fromExpression : Expression -> Either Text DhallValue
 DhallValue.fromExpression expr =
@@ -92,7 +119,12 @@ evaluateSimple input =
 
 {{ run a Dhall programm}}
 evaluate : Text ->{IO} Either Text DhallValue
-evaluate input =
+evaluate input = match normalizeExpression input with
+  Right exp ->  DhallValue.fromExpression exp
+  Left err -> Left err
+
+normalizeExpression : Text ->{IO} Either Text Expression
+normalizeExpression input =
   path = Path Here (File [] ("_"))
   go input = match parseText completeExpression input with
     Left error -> Left error
@@ -102,7 +134,7 @@ evaluate input =
         Right resolved ->
           match type_inference.typeCheck Context.empty resolved with
               Left error -> Left ("Type error: " ++ error)
-              Right typedExpression -> DhallValue.fromExpression (betaNormalize  resolved)
+              Right typedExpression -> Right (betaNormalize resolved)
   cache : '{Cache, IO, g} b ->{IO, g} b
   cache = !import.setupCache
   errOrLoader : (Either Text ('{RemoteLoader, IO, g} b ->{IO, g} b))
@@ -117,12 +149,22 @@ evaluate input =
         cache
           '(import.defaultEnvironment '(import.defaultFileLoader '(loader '(go input))))
 
-main _ =
+dhallRun : '{IO, Exception} ()
+dhallRun _ =
   match !getArgs with
-    [arg] ->
-      match evaluate arg with
+    args ->
+      match evaluate (Text.join " " args) with
         Left err -> printLine ("Error: " ++ err)
         Right exp -> printLine (printExpression exp)
+
+dhallHash : '{IO, Exception} ()
+dhallHash _ = match !getArgs with
+  [t] -> match normalizeExpression t with
+    Right exp -> printLine ("sha256:" ++ (import.hashExpressionToText exp))
+    Left err -> printLine ("Error: " ++ err)
+  _ -> printLine "Usage: run dhallHash <import path>"
+
+
 
 > evaluateSimple example1.input
 > evaluateSimple "[3, { y = \\(x: Natural) -> x }]"

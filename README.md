@@ -18,16 +18,21 @@ pull https://github.com/hagl/dhall-unison:.dhall.releases._v2 .external.dhall.v2
 If you are interested in the sources you will also need `stew.parser` and `stew.http`:
 ```
 .> pull git@github.com:stew/codebase:.parser.trunk .external.stew.parser
-.> pull git@github.com:unisonweb/share.git:.stew.http .external.stew.http
+.> pull git@github.com:stew/codebase:.http.trunk .external.stew.http
 ```
 
 ## Usage
 
-The `evaluate` function executes a Dhall program and returns either an error or a value of type `DhallValue`
+The main interface for this library are the functions
+```
+evaluate : Text ->{IO} Either Text DhallValue
+evaluateSimple : Text -> Either Text DhallValue
+```
+
+
+Both evaluate a text containing a dhall expression into an error or a value of type `DhallValue`.
 
 ```
-external.dhall.trunk.Dhall.evaluate : Text -> Either Text DhallValue
-
 unique type DhallValue
   = DhallInteger Integer
   | DhallNatural Natural
@@ -39,7 +44,12 @@ unique type DhallValue
   | DhallOptional (Optional DhallValue)
 ```
 
-### Example
+`evaluate` supports all of Dhall's features. In order to resolve imports (i.e. environment variables, local or remote files) it needs the `IO` ability.
+
+`evaluateSimple` is a pure function and can be used to evaluate a self-contained dhall expression (i.e. without any imports). It will fail and return a `Left` value when encountering an import during evaluation.
+
+
+### Example 1: Converting a Dhall expression to a Unison value
 
 Let's have a look at this Dhall program from the [Dhall homepage][dhall-lang]
 
@@ -82,11 +92,11 @@ convertConfigs = cases
       UserConfig (getString "home") (getString "publicKey") (getString "privateKey")) list
 
 -- evaluate and convert input in a watch expression
-> evaluate input |> Either.mapRight convertConfigs
+> evaluateSimple input |> Either.mapRight convertConfigs
 ```
 The watch expression will give the following output in `ucm`
 ```ucm
-> evaluate input |> Either.mapRight convertConfigs
+> evaluateSimple input |> Either.mapRight convertConfigs
 ⧩
 Right
   [ UserConfig
@@ -97,30 +107,77 @@ Right
 
 This example is also available online on [Unison Share][unison-share-hagl-dhall]
 
+### Example 2: Evaluating Dhall code in ucm
+
+This library also ships an unsupported runnable `dhallRun` function that can be used to quickly evaluate a dhall expression directly from `ucm`.
+
+The implementation use a bit of a hack to not require quoting or escaping dhall code inside ucm.
+For example you can do the following:
+
+Simple calculations:
+```
+.> run dhallRun 47 * 71
+3337
+```
+
+Text interpolation, access to environment variables and calling built-in fuctions
+```
+.> run dhallRun "Hello ${env:USER as Text}! \n 3 + 4 = ${Natural/show (3 + 4)}"
+"Hello harald!
+ 3 + 4 = 7"
+```
+
+Defining and applying functions
+```
+.> run dhallRun let add = \(x: Natural) -> \(y: Natural) -> x + y in add 1 2
+3
+```
+
+Using remote dhall expressions (fold from Dhall prelude)
+```
+.> run dhallRun let add = \(x: Natural) -> \(y: Natural) -> x + y let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall Natural l Natural add 0 in sum [1,2,3,4,5]
+15
+```
+
+Loading and evaluating the remote expression takes some time. By adding a semantic hash to the import, the function can be cached locally. This will reduce the runtime of the second call below. You can use `dhallHash` to calculate the hash value of an import expression:
+
+```
+.> run dhallRun https://prelude.dhall-lang.org/List/fold.dhall
+sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814
+
+.> run dhallRun let add = \(x: Natural) -> \(y: Natural) -> x + y let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural add 0 in sum [1,2,3,4,5]
+15
+
+.> run dhallRun let add = \(x: Natural) -> \(y: Natural) -> x + y let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural add 0 in sum [1,2,3,4,5]
+15
+```
+
+See the [Dhall documentation](dhall-lang) for more details about the language.
+
+
 ## Status
 
-This project is currently in development and doesn't have any releases yet.
+This project is currently in development, release v3 has alpha status.
 
-The [Dhall Acceptance Tests][dhall-tests] of the sections
-* parser tests
-* normalization tests
-* alpha-normalization tests
-* type-inference tests
-
-can be run with the the from `ucm` with the command
+The [Dhall Acceptance Tests][dhall-tests] can be run with the the from `ucm` with the command
 
 ```ucm
 run .external.dhall.trunk.testsuite.runTestSuite <path to local copy of github.com/dhall-lang/dhall-lang>
 ```
 At the time of this writing this will give the following results
 ```
-1132 total tests ( ✅ 938 passed, 🚫 194 failed)
+1468 total tests ( ✅ 1461 passed, 🚫 7 failed) in directory /Users/harald/projects/dhall-unison/dhall-lang
+Duration: 869.17s
 ```
+The remaining failing tests are
+
+* `dhall-lang/tests/type-inference/success/preludeA.dhall` : This test recursively loads all of prelude and shows some performance problems in the current implementation. It would probably succeed, but would take hours/days to do so. See the issues labeled [performance](https://github.com/hagl/dhall-unison/issues?q=is%3Aissue+label%3Aperformance+) for some ideas how to improve the performance.
+* `./dhall-lang/tests/import/success/unit/cors/*` : The test.dhall-lang.org server that is used for CORS tests is currently not sending the correct response headers. See https://github.com/dhall-lang/dhall-lang/pull/1265 for details
+* `./dhall-lang/tests/import/success/unit/headerForwarding` : This test requires https://github.com/dhall-lang/dhall-lang/pull/1263 to be merged.
 
 ### Limitations
 
 The following features are not yet supported
-* importing of external files
 * date & time types are not exposed in the resolved DhallValue, since there are no matching type in the Unsion standard library
 
 ### Future directions

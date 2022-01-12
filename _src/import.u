@@ -126,7 +126,7 @@ import.Cache.impl.store p expression =
           (fileHandle -> putBytes fileHandle encoded))) with
       Left (Failure _ t _) ->
         Debug.watch ("Error writing to cache: " ++ t)
-        false
+          false
       Right _ -> true
 
 import.withoutCache: '{Cache, IO, g} b ->{IO, g} b
@@ -176,7 +176,9 @@ import.configureCache env dirs =
   getOrCreate path subfolder =
     Optional.flatMap (filePath ->
       if not (fileExists filePath)
-        then None
+        then
+          printLine ("Cachedir doesn't exist or can't be created " ++ (FilePath.toText filePath))
+          None
         else
           newPath = FilePath (FilePath.toText filePath ++ "/" ++ subfolder)
           base.io.createDirectory newPath
@@ -188,7 +190,9 @@ import.configureCache env dirs =
       Right t ->
         filePath = FilePath t
         if not (fileExists filePath) -- TODO check permissions
-          then None
+          then
+            printLine ("Cachedir doesn't exist  " ++ (FilePath.toText filePath))
+            None
           else
             List.foldLeft getOrCreate (Optional.Some filePath) dirs)
   match cacheDir with
@@ -380,7 +384,7 @@ import.defaultEnvironment f =
   handler = cases
     {loadEnv name -> resume} ->
       res = match io.getEnv.impl name with
-        Left (Failure _ err _) -> Debug.watch err (Left (ResolveError ImportError err))
+        Left (Failure _ err _) -> Left (ResolveError ImportError err)
         Right v -> Right v
       handle resume res with handler
     {res} -> res
