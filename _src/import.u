@@ -334,6 +334,48 @@ import.setupRemoteLoader base =
     Left err -> Left err
     Right map -> Right (defaultHeaderRemoteLoader map)
 
+
+import.queryParser.componentAllowedChars : Set Char
+import.queryParser.componentAllowedChars = Set.fromList (Text.toCharList ".-_~:@!$'*+;:@")
+
+import.queryParser.pctEncoded : Parser e Char Nat
+import.queryParser.pctEncoded = (char ?%) *> parser.tokens.hexChar ^ parser.tokens.hexChar $> cases
+  (c1, c2) ->
+    match Optional.flatMap Natural.toNat (Natural.parse (Text.fromCharList [c1, c2]) 16) with
+      Optional.Some n -> n
+
+import.queryParser.pctEncodedChars : Parser e Char Text
+import.queryParser.pctEncodedChars = many import.queryParser.pctEncoded >>= cases
+    l ->
+      match Text.fromUtf8.impl (Bytes.fromList l) with
+        Right t -> Parser.const t
+        Left (Failure _ err _) ->
+          Parser.fail (FancyError Location.unknown (Set.singleton (ErrorFail ("Can't convert percent-encoded URL params"))))
+
+import.queryParser.componentChars : Parser e Char Text
+import.queryParser.componentChars = Parser.map Text.fromCharList (many (oneOf [
+    Parser.token (c -> if Set.contains c import.queryParser.componentAllowedChars then Some c else None),
+    ascii.alphanum  ]))
+
+import.queryParser.component : Parser e Char Text
+-- import.queryParser.component = Parser.const ""
+import.queryParser.component = Parser.map (Text.join "") (many (oneOf [
+    import.queryParser.componentChars,
+    import.queryParser.pctEncodedChars
+  ]))
+
+import.queryParser.param : Parser e Char (Text, Text)
+import.queryParser.param = import.queryParser.component ^ ((char ?=) *> import.queryParser.component)
+
+import.queryParser.query : Parser e Char [(Text, Text)]
+import.queryParser.query = sepBy import.queryParser.param (char ?&)
+
+import.parseQuery : Text -> Map Text [Text]
+import.parseQuery t =
+  match parseText import.queryParser.query t with
+    Left err -> Debug.watch ("Couldn't parse query " ++ t) Map.empty -- TODO
+    Right list -> Map.fromListWith (flip (List.++)) (List.map (cases (k,v) -> (k, [v])) list)
+
 import.defaultHeaderRemoteLoader: Map Text (Map Text Text) -> '{RemoteLoader, g} b ->{IO, g} b
 import.defaultHeaderRemoteLoader defaults =
   handler = cases
@@ -348,8 +390,7 @@ import.defaultHeaderRemoteLoader defaults =
             HTTPS -> (http.Scheme.Scheme "https")
             HTTP -> (http.Scheme.Scheme "http")
           p = match file with File dirs f -> http.Path.Path (List.reverse (f +: dirs))
-          -- q = Optional.map http.Query.Query oQuery
-          q = http.Query.Query Map.empty -- TODO
+          q = Query (Optional.getOrElse Map.empty (Optional.map parseQuery oQuery))
           uri = http.Uri.Uri s (Some (Authority None (HostName authority) None)) p q None
           message = http.Message.Message http.Version.http11 headers http.Body.empty http.Attributes.empty
           req _ = request (Request message GET uri)
