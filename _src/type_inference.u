@@ -144,8 +144,7 @@ type_inference.typeCheck = cases ctx -> cases
                 None -> Right (Application (Builtin List) t)
                 Optional.Some (Right ((x, tx), _)) -> Left ("List contains elements of type " ++ (printExpression t) ++ " and type " ++ (printExpression tx))
                 Optional.Some (Left err) -> Left err
-            Right c -> Debug.watch ((printExpression t) ++ " : " ++ (printExpression c) ++ "\n" ++ (Context.dump ctx)) (Left "Element type of list must be a type")
-            -- _ -> Left "Element type of list must be a type"
+            Right c -> Left "Element type of list must be a type"
 
   Operator e1 ListAppend e2 ->
     match (typeCheck ctx e1, typeCheck ctx e2) with
