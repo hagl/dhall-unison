@@ -59,7 +59,7 @@ import.referentiallySane parent child = match (parent, child) with
 
 import.corsCompliant : ImportType -> ImportType -> Map Text [Text] -> Boolean
 import.corsCompliant parent child headers =
-    -- match (parent, Debug.watch ("corsCompliant : " ++ (printImportType parent) ++ ", " ++ (printImportType child)) child) with
+    -- match (parent, Debug.watch ("corsCompliant : " ++ (utils.printImportType parent) ++ ", " ++ (utils.printImportType child)) child) with
     match (parent, child) with
       (Path _ _, _) -> true
       (Env _, _) -> true
@@ -597,9 +597,9 @@ import.resolveImports base previous cache expression =
           handle resume res with handler cache
         _ ->
           if not (referentiallySane base chained)
-          then Left (ResolveError ImportError ("Importing: " ++ (printImportType chained) ++ " from " ++ (printImportType base) ++ " is not referentially sane"))
+          then Left (ResolveError ImportError ("Importing: " ++ (utils.printImportType chained) ++ " from " ++ (utils.printImportType base) ++ " is not referentially sane"))
           else if List.contains chained previous
-            then Left (ResolveError UnrecoverableImportError ("Cyclic imports: " ++ (printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (printImportType it)) previous))))
+            then Left (ResolveError UnrecoverableImportError ("Cyclic imports: " ++ (utils.printImportType chained) ++ "\n" ++ (Text.join "\n" (List.map (it -> "  imported from: " ++ (utils.printImportType it)) previous))))
             else
               match Optional.flatMap cacheLoad oDigest with
                 Optional.Some expression -> handle resume expression with handler cache

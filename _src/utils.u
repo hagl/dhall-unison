@@ -3,6 +3,7 @@ use support.Date Date
 use support.Time Time
 use support.TimeZone TimeZone
 use syntax
+use syntax.ImportType Path
 use syntax.TextLiteral Chunks
 use syntax.ImportMode Code RawText Location
 use syntax.Constant Type Kind Sort
@@ -118,7 +119,7 @@ utils.printFilePrefix = cases
 utils.printImportType : ImportType -> Text
 utils.printImportType = cases
   Missing -> "missing"
-  Remote (URL scheme authority file optQuery) optHeaders -> (printScheme scheme) ++ authority ++ (printFile file) ++ (Optional.getOrElse "" optQuery) ++ (Optional.fold '("") (h -> " using " ++ (printExpression h)) optHeaders)
+  Remote (URL scheme authority file optQuery) optHeaders -> (printScheme scheme) ++ authority ++ "/" ++ (printFile file) ++ (Optional.getOrElse "" optQuery) ++ (Optional.fold '("") (h -> " using " ++ (printExpression h)) optHeaders)
   Path prefix file -> (printFilePrefix prefix) ++ (printFile file)
   Env t -> "env:" ++ t
 

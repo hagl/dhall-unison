@@ -292,7 +292,6 @@ import.dhallMapToUnison = cases
 
 testsuite.importTest : FilePath -> Text -> Text ->{IO, Exception} Boolean
 testsuite.importTest cacheDir testDir name =
-  -- if not (name == "originHeaders") then false else
     use Text
     dirs = List.reverse (utils.splitOn "/" (testDir))
     use type_inference
@@ -320,7 +319,7 @@ testsuite.importTest cacheDir testDir name =
         errOrLoader =
           import.readOnlyCache cacheDir
             '(import.mapEnvironment map '(import.defaultFileLoader
-                '(setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
+                '(import.setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
         match errOrLoader with
           -- Left err ->
             Left msg -> Debug.watch ("Error setting up loader : " ++ msg) false
@@ -380,7 +379,7 @@ testsuite.importFailureTest cacheDir testDir name =
         errOrLoader =
           import.readOnlyCache cacheDir
             '(import.mapEnvironment map '(import.defaultFileLoader
-                '(setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
+                '(import.setupRemoteLoader (Path Here (File dirs (name ++ "A.dhall"))))))
         match errOrLoader with
           -- Left err ->
             Left msg -> Debug.watch ("Error setting up loader : " ++ msg) true
@@ -429,13 +428,10 @@ testsuite.runTests path =
   printLine ("Duration: " ++ (durationToText duration))
 
 
-{{ {runTestSuite} will run the [Dhall acceptance tests](https://github.com/dhall-lang/dhall-lang/tree/master/tests)
+{{ {runTestSuite} will run the complete [Dhall acceptance tests](https://github.com/dhall-lang/dhall-lang/tree/master/tests)
 
-Currently tests in the following categories are executed:
-
- - Parser test
- - Alpha normalization
- - Beta normalization
+The only exception is the type-inference/success/prelude test, which attempts to type-check the whole prelude code
+ and is too slow with the current implementation.
 
 You need to specify the path to a local copy of [https://github.com/dhall-lang/dhall-lang](https://github.com/dhall-lang/dhall-lang) to run the command in ucm:
 
