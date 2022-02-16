@@ -1,0 +1,112 @@
+releaseNotes : Doc
+releaseNotes =
+  {{
+  This is release v3 of the **dhall-unison** library, an implementation of the
+  [Dhall configuration language](https://dhall-lang.org/).
+
+  The library is still in pre-alpha status and shouldn't be used for anything
+  serious. This release is intended as a preview to allow experimenting with
+  the library and to get feedback.
+
+  # Status
+
+    This version now supports the complete Dhall language (V21.1) and
+    passes over 99% of the Dhall acceptance tests. (See
+    {_typechecker.testsuite.runTestSuite.doc}) for more details.
+
+  # Changelog
+
+    ## V3
+
+       * Support for import of environment variables, local and remote files
+
+    ## V2
+
+       * Dhall expressions are now type checked before evaluation
+
+    ## V1
+
+       * Initial release
+
+  # Future directions
+
+    * Performance improvements
+    * Better error messages
+
+  # Questions, feedback or contributions?
+
+    Please file issues or PRs in the Github project:
+    [hagl/dhall-unison](https://github.com/hagl/dhall-unison)
+  }}
+
+---- Anything below this line is ignored by Unison.
+
+releases._v2.releaseNotes : Doc
+releases._v2.releaseNotes =
+  {{
+  This is release v2 of the **dhall-unison** library, an implementation of the
+  [Dhall configuration language](https://dhall-lang.org/).
+
+  The library is still in pre-alpha status and shouldn't be used for anything
+  serious. This release is intended as a preview to allow experimenting with
+  the library and to get feedback.
+
+  # Status
+
+    This version does not yet support the complete Dhall language, in
+    particular there is no support for external resources. It passes over 90%
+    of the parsing and reduction acceptance tests. (See
+    {_typechecker.testsuite.runTestSuite.doc}) for more details.
+
+  # Changelog
+
+    ## V2
+
+       * Dhall expressions are now type checked before evaluation
+
+    ## V1
+
+       * Initial release
+
+  # Future directions
+
+    * Support for external resources
+    * Pass all the Dhall acceptance tests
+    * Performance improvements
+    * Better error messages
+
+  # Questions, feedback or contributions?
+
+    Please file issues or PRs in the Github project:
+    [hagl/dhall-unison](https://github.com/hagl/dhall-unison)
+  }}
+
+---- Anything below this line is ignored by Unison.
+
+---
+series._v1.releaseNotes : Doc
+series._v1.releaseNotes = {{
+This is the initial release of the *dhall-unison* library, an implementation of the [Dhall configuration language](https://dhall-lang.org/).
+
+The library is still in pre-alpha status and shouldn't be used for anything serious.
+This release is intended as a preview to allow experimenting with the library and to get feedback.
+
+# Status
+
+This version does not yet support the complete Dhall language, in particular there is no support for external resources.
+It passes over 90% of the parsing and reduction acceptance tests.  (See {testsuite.runTestSuite.doc}) for more details.
+
+# Future directions
+
+* Type checking
+* Support for external resources
+* Pass all the Dhall acceptance tests
+* Performance improvements
+* Better error messages
+
+# Questions, feedback or contributions?
+
+Please file issues or PRs in the Github project: [hagl/dhall-unison](https://github.com/hagl/dhall-unison)
+
+}}
+

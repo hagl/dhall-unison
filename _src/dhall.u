@@ -149,6 +149,60 @@ normalizeExpression input =
         cache
           '(import.defaultEnvironment '(import.defaultFileLoader '(loader '(go input))))
 
+{{
+  dhallRun can run Dhall expressions directly from ucm.
+  Note: The implementation uses a bit of a hack in order to not require any quoting or escaping the Dhall code inside ucm.
+  It relies on how ''ucm'' currently passes arguments to a main function and might break in the future.
+
+  Here are a few usage examples:
+
+  Simple calculations
+
+  ```txt
+  .> run dhallRun 47 * 71
+  3337
+  ```
+
+  Text interpolation, access to environment variables and calling built-in functions
+
+  ```txt
+  .> run dhallRun "Hello ${env:USER as Text}!\n 3 + 4 = ${Natural/show (3 + 4)}"
+  "Hello harald!
+  3 + 4 = 7"
+  ```
+
+  Defining and applying functions
+
+  ```txt
+  .> run dhallRun let add = \(x: Natural) -> \(y: Natural) -> x + y in add 1 2
+  3
+  ```
+
+  Using remote dhall expressions (e.g. fold from Dhall prelude)
+
+  ```txt
+  .> run dhallRun let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall Natural l Natural (\(x: Natural) -> \(y: Natural) -> x + y)  0 in sum [1,2,3,4,5]
+  15
+  ```
+
+  Loading and evaluating the remote expression takes some time. By adding a semantic hash to the import, the function can be cached locally. This will reduce the runtime of the second call below. You can use `dhallHash` to calculate the hash value of an import expression:
+
+  ```txt
+  .> run dhallRun https://prelude.dhall-lang.org/List/fold.dhall
+  sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814
+
+  .> run dhallRun let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural (\(x: Natural) -> \(y: Natural) -> x + y)  0 in sum [1,2,3,4,5]
+  15
+  ```
+
+  Running the same command a second time should be faster, since the parsed expression is read from the local cache
+
+  ```txt
+  .> run dhallRun let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural (\(x: Natural) -> \(y: Natural) -> x + y)  0 in sum [1,2,3,4,5]
+  15
+  ```
+
+}}
 dhallRun : '{IO, Exception} ()
 dhallRun _ =
   match !getArgs with
@@ -157,6 +211,17 @@ dhallRun _ =
         Left err -> printLine ("Error: " ++ err)
         Right exp -> printLine (printExpression exp)
 
+{{
+  Calculates the semantic hash of a Dhall import.
+
+  Usage: ''run dhallHash <file/remote import> ''
+
+  Example:
+  '''
+  .> run dhallHash https://prelude.dhall-lang.org/Bool/and.dhall
+  sha256:0b2114fa33cd76652e4360f012bc082718944fe4c5b28c975483178f8d9b0a6d
+  '''
+}}
 dhallHash : '{IO, Exception} ()
 dhallHash _ = match !getArgs with
   [t] -> match normalizeExpression t with
@@ -211,6 +276,27 @@ README =
   ## Status
 
   This library is currently under development and will have incompatible changes in the future.
+
+  ## Usage
+
+  The main interface for this library are the functions
+
+  @signature{evaluate}
+  @signature{evaluateSimple}
+
+  Both evaluate a text containing a dhall expression into an error or a value of type ''DhallValue''
+
+  @source{type DhallValue}
+
+  ''evaluate'' supports all of Dhall's features. In order to resolve imports (i.e. environment variables, local or remote files) it needs the ''IO'' ability.
+
+  ''evaluateSimple'' is a pure function and can be used to evaluate a self-contained Dhall expression (i.e. without any imports). It will fail with a ''Left'' value when encountering an import during evaluation.
+
+  ### Utilities
+
+  {dhallHash} calculates the semantic hash of a Dhall import.
+
+  {dhallRun} evaluates a Dhall expression directly in ucm.
 
   ## Example
 

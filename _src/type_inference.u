@@ -144,8 +144,7 @@ type_inference.typeCheck = cases ctx -> cases
                 None -> Right (Application (Builtin List) t)
                 Optional.Some (Right ((x, tx), _)) -> Left ("List contains elements of type " ++ (printExpression t) ++ " and type " ++ (printExpression tx))
                 Optional.Some (Left err) -> Left err
-            Right c -> Debug.watch ((printExpression t) ++ " : " ++ (printExpression c) ++ "\n" ++ (Context.dump ctx)) (Left "Element type of list must be a type")
-            -- _ -> Left "Element type of list must be a type"
+            Right c -> Left "Element type of list must be a type"
 
   Operator e1 ListAppend e2 ->
     match (typeCheck ctx e1, typeCheck ctx e2) with
@@ -502,10 +501,6 @@ type_inference.withUpdateType t vt nel =
         Left err -> Left err
         Right nt -> Right (RecordType (List.sortBy Tuple.at1 ((hd, nt) +: (List.deleteFirst (((==) hd) . Tuple.at1) tExs ))))
     _ -> Left "Intermediate path in With expression doesn't point to a record"
-  -- h +: [] -> match t with
-  --   RecordType tExs ->
-  --     RecordType (List.sortBy Tuple.at1 ((h, vt) +: (List.deleteFirst ((== h) . Tuple.at1) tExs )))
-  --   _ -> Left "Intermediate path in With expression doesn't point to a record"
 
 type_inference.mergeReduceType : Optional Expression -> [(Text, Optional Expression)] -> [(Text, Expression)] -> Either Text Expression
 type_inference.mergeReduceType oResultType alternativeTypes handlerTypes =
@@ -532,22 +527,23 @@ type_inference.mergeReduceType oResultType alternativeTypes handlerTypes =
 
 type_inference.typeCheckOperator : Context -> Expression -> Operator -> Expression -> Either Text Expression
 type_inference.typeCheckOperator ctx e1 op e2 =
-    match operatorTypes op with (t1, t2, t3) ->
-    match (typeCheck ctx e1, typeCheck ctx e2) with
-      (Left err, _) -> Left err
-      (_, Left err) -> Left err
-      (Right te1, Right te2) | (t1 === te1) && (t2 === te2) -> Right t3
-      (Right te1, Right te2) | t1 === te1 ->  Left ("TypeError: the right operand of " ++ (printOperator op) ++ " is not of type " ++ (printExpression t2) ++ ", but " ++ printExpression(te2))
-      (Right te1, Right te2) -> Left ("TypeError: the left operand of " ++ (printOperator op) ++ " is not of type " ++ (printExpression t1) ++ ", but " ++ (printExpression te1))
+    match operatorTypes op with
+      None -> Left ("Unhandled operator " ++ (printOperator op))
+      Optional.Some (t1, t2, t3) ->
+        match (typeCheck ctx e1, typeCheck ctx e2) with
+          (Left err, _) -> Left err
+          (_, Left err) -> Left err
+          (Right te1, Right te2) | (t1 === te1) && (t2 === te2) -> Right t3
+          (Right te1, Right te2) | t1 === te1 ->  Left ("TypeError: the right operand of " ++ (printOperator op) ++ " is not of type " ++ (printExpression t2) ++ ", but " ++ printExpression(te2))
+          (Right te1, Right te2) -> Left ("TypeError: the left operand of " ++ (printOperator op) ++ " is not of type " ++ (printExpression t1) ++ ", but " ++ (printExpression te1))
 
-type_inference.operatorTypes : Operator -> (Expression, Expression, Expression)
+type_inference.operatorTypes : Operator -> Optional (Expression, Expression, Expression)
 type_inference.operatorTypes = cases
-  Plus -> (Builtin Natural, Builtin Natural, Builtin Natural)
-  Times -> (Builtin Natural, Builtin Natural, Builtin Natural)
-  Or -> (Builtin Bool, Builtin Bool, Builtin Bool)
-  And -> (Builtin Bool, Builtin Bool, Builtin Bool)
-  Equal -> (Builtin Bool, Builtin Bool, Builtin Bool)
-  NotEqual -> (Builtin Bool, Builtin Bool, Builtin Bool)
-  TextAppend -> (Builtin Text, Builtin Text, Builtin Text)
-  -- TODO other operators cannot be handled this way, because of generic parameters
-  _ -> (Builtin Natural, Builtin Natural, Builtin Natural)
+  Plus -> Optional.Some (Builtin Natural, Builtin Natural, Builtin Natural)
+  Times -> Optional.Some (Builtin Natural, Builtin Natural, Builtin Natural)
+  Or -> Optional.Some (Builtin Bool, Builtin Bool, Builtin Bool)
+  And -> Optional.Some (Builtin Bool, Builtin Bool, Builtin Bool)
+  Equal -> Optional.Some (Builtin Bool, Builtin Bool, Builtin Bool)
+  NotEqual -> Optional.Some (Builtin Bool, Builtin Bool, Builtin Bool)
+  TextAppend -> Optional.Some (Builtin Text, Builtin Text, Builtin Text)
+  _ -> None
