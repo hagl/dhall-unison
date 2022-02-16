@@ -1,9 +1,22 @@
 use syntax.TextLiteral Chunks
 use syntax Expression ImportType
-use syntax.ImportType Remote Path Env Missing
+use syntax.ImportType Remote
+use syntax.ImportType Env
+use syntax.ImportType Missing
+use syntax.ImportType Path
+use syntax ImportMode
 use syntax.ImportMode RawText Code Location
-use syntax.FilePrefix Absolute Here Parent Home
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax Scheme
+use syntax.Scheme HTTP HTTPS
+use syntax File
+use syntax.File File
+use syntax FilePrefix
+use syntax.FilePrefix Absolute Here Home Parent
+use syntax URL
+use syntax.URL URL
+use syntax SHA256Digest
+use syntax.SHA256Digest SHA256Digest
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome Import
 use syntax.Constant Type Kind Sort
 use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
 
@@ -393,9 +406,9 @@ import.defaultHeaderRemoteLoader defaults =
           q = Query (Optional.getOrElse Map.empty (Optional.map parseQuery oQuery))
           uri = http.Uri.Uri s (Some (Authority None (HostName authority) None)) p q None
           message = http.Message.Message http.Version.http11 headers http.Body.empty http.Attributes.empty
-          req _ = request (Request message GET uri)
+          req _ = Debug.watch "pre req" (request (Debug.watch "p1 req" (Request message GET uri)))
           response = catch '(handle !req with Http.handler)
-          match response with
+          Debug.watch "post req" match response with
             Right resp@(Response _ (Status s st) (Headers headers) (Optional.Some (Body bytes))) | Response.isSuccess resp ->
                 if not (corsCompliant previous (Remote url None) headers)
                   then Left "CORS error"

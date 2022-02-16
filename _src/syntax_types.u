@@ -2,7 +2,7 @@ use support
 
 unique type syntax.Expression =
    -- | > x@n
-  Variable Text Natural
+  Variable Text Nat
   | -- | > λ(x : A) → b
   Lambda Text syntax.Expression syntax.Expression
   | -- | > ∀(x : A) → B

@@ -3,21 +3,21 @@ use .shift
 use syntax.TextLiteral Chunks
 use syntax.Constant
 use syntax Expression
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome Import
 
-substitution.substitute: Expression -> Text -> Natural -> Expression -> Expression
+substitution.substitute: Expression -> Text -> Nat -> Expression -> Expression
 substitution.substitute e x' n e0 =
   subst : Expression -> Expression
   subst ex = substitute ex x' n e0
   match e with
-    Variable x n' | (x == x') && (n==n') -> e0
+    Variable x n' | (x == x') && (n == n') -> e0
     Variable y m -> Variable y m
-    Lambda x A0 b0 | x == x' -> Lambda x (subst A0) (substitute b0 x' (n + one) (shift +1 x zero e0))
-    Lambda y A0 b0 -> Lambda y (subst A0) (substitute b0 x' n (shift +1 y zero e0))
-    Forall x A0 B0 | x == x' -> Forall x (subst A0) (substitute B0 x' (n + one) (shift +1 x zero e0))
-    Forall y A0 B0 -> Forall y (subst A0) (substitute B0 x' n (shift +1 y zero e0))
-    Let x t a0 b0 | x == x' -> Let x (Optional.map subst t) (subst a0) (substitute b0 x (n + one) (shift +1 x zero e0))
-    Let y t a0 b0 -> Let y (Optional.map subst t) (subst a0) (substitute b0 x' n (shift +1 y zero e0))
+    Lambda x A0 b0 | x == x' -> Lambda x (subst A0) (substitute b0 x' (n + 1) (shift +1 x 0 e0))
+    Lambda y A0 b0 -> Lambda y (subst A0) (substitute b0 x' n (shift +1 y 0 e0))
+    Forall x A0 B0 | x == x' -> Forall x (subst A0) (substitute B0 x' (n + 1) (shift +1 x 0 e0))
+    Forall y A0 B0 -> Forall y (subst A0) (substitute B0 x' n (shift +1 y 0 e0))
+    Let x t a0 b0 | x == x' -> Let x (Optional.map subst t) (subst a0) (substitute b0 x (n + 1) (shift +1 x 0 e0))
+    Let y t a0 b0 -> Let y (Optional.map subst t) (subst a0) (substitute b0 x' n (shift +1 y 0 e0))
     If t0 l0 r0 -> If (subst t0) (subst l0) (subst r0)
     Merge t0 u0 t -> Merge (subst t0) (subst u0) (Optional.map subst t)
     ToMap t0 t -> ToMap (subst t0)(Optional.map subst t)
@@ -50,34 +50,34 @@ substitution.substitute e x' n e0 =
 
 use test
 
-test> substitution.substitute.tests.ex1 = check(substitute (Variable "x" zero) "x" zero (Expression.Builtin Builtin.Bool)
+test> substitution.substitute.tests.ex1 = check(substitute (Variable "x" 0) "x" 0 (Expression.Builtin Builtin.Bool)
   ===
    (Expression.Builtin Builtin.Bool))
 
-test> substitution.substitute.tests.ex2 = check(substitute (Variable "y" zero) "x" zero (Expression.Builtin Builtin.Bool)
+test> substitution.substitute.tests.ex2 = check(substitute (Variable "y" 0) "x" 0 (Expression.Builtin Builtin.Bool)
   ===
-  (Variable "y" zero))
+  (Variable "y" 0))
 
-test> substitution.substitute.tests.ex3 = check(substitute (Variable "x" zero) "x" one (Expression.Builtin Builtin.Bool)
+test> substitution.substitute.tests.ex3 = check(substitute (Variable "x" 0) "x" 1 (Expression.Builtin Builtin.Bool)
   ===
-  (Variable "x" zero))
+  (Variable "x" 0))
 
-test> substitution.substitute.tests.ex4 = check(substitute (Application (Expression.Builtin Builtin.List) (Variable "x" zero)) "x" zero (Expression.Builtin Builtin.Bool)
+test> substitution.substitute.tests.ex4 = check(substitute (Application (Expression.Builtin Builtin.List) (Variable "x" 0)) "x" 0 (Expression.Builtin Builtin.Bool)
   ===
   (Application (Expression.Builtin Builtin.List)(Expression.Builtin Builtin.Bool)))
 
-test> substitution.substitute.tests.ex5 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" zero)) "x" zero (Expression.Builtin Builtin.True)
+test> substitution.substitute.tests.ex5 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" 0)) "x" 0 (Expression.Builtin Builtin.True)
   ===
-  (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" zero)))
+  (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" 0)))
 
-test> substitution.substitute.tests.ex6 = check(substitute (Lambda "y" (Expression.Builtin Builtin.Text) (Variable "x" zero)) "x" zero (Expression.Builtin Builtin.True)
+test> substitution.substitute.tests.ex6 = check(substitute (Lambda "y" (Expression.Builtin Builtin.Text) (Variable "x" 0)) "x" 0 (Expression.Builtin Builtin.True)
   ===
   (Lambda "y" (Expression.Builtin Builtin.Text) (Expression.Builtin Builtin.True)))
 
-test> substitution.substitute.tests.ex7 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" one)) "x" zero (Expression.Builtin Builtin.True)
+test> substitution.substitute.tests.ex7 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" 1)) "x" 0 (Expression.Builtin Builtin.True)
   ===
   (Lambda "x" (Expression.Builtin Builtin.Text) (Expression.Builtin Builtin.True)))
 
-test> substitution.substitute.tests.ex8 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" (Natural.fromNat 2))) "x" one (Expression.Builtin Builtin.True)
+test> substitution.substitute.tests.ex8 = check(substitute (Lambda "x" (Expression.Builtin Builtin.Text) (Variable "x" 2)) "x" 1 (Expression.Builtin Builtin.True)
   ===
   (Lambda "x" (Expression.Builtin Builtin.Text) (Expression.Builtin Builtin.True)))

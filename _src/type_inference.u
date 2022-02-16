@@ -2,7 +2,7 @@ use syntax Expression Constant Operator
 use syntax.TextLiteral Chunks
 use syntax.Constant Type Kind Sort
 use shift shift
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome Import
 use syntax.Operator Or Plus TextAppend ListAppend And CombineRecordTerms Prefer CombineRecordTypes Times Equal NotEqual Equivalent Alternative
 use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
 use Optional
@@ -31,12 +31,12 @@ type_inference.Context.empty = Context []
 type_inference.Context.add : Text -> Expression -> Context -> Context
 type_inference.Context.add t e = cases Context l -> Context ((t, e) +: l)
 
-type_inference.Context.lookup : Text -> Natural -> Context -> Optional Expression
+type_inference.Context.lookup : Text -> Nat -> Context -> Optional Expression
 type_inference.Context.lookup  t n ctx =
-  go : Natural -> [(Text, Expression)] -> Optional Expression
+  go : Nat -> [(Text, Expression)] -> Optional Expression
   go n = cases
     [] -> None
-    ((t1, e) +: rest) | t == t1 -> if n == zero then Some e else go (n - one) rest
+    ((t1, e) +: rest) | t == t1 -> if n == 0 then Some e else go (Nat.drop n 1) rest
     ( _  +: rest) -> go n rest
   match ctx with Context list -> go n list
 
@@ -53,7 +53,7 @@ type_inference.typeCheck = cases ctx -> cases
 
   Variable x n -> match Context.lookup x n ctx with
     Optional.Some expression -> Right expression
-    None -> Left ("Variable " ++ x ++ (if n == zero then "" else "@" ++ (Natural.toDecimalText n)) ++ " is unkonwn")
+    None -> Left ("Variable " ++ x ++ (if n == 0 then "" else "@" ++ (Nat.toText n)) ++ " is unkonwn")
 
   Builtin Bool -> Right (Constant Type)
   Builtin True -> Right (Builtin Bool)
@@ -64,15 +64,15 @@ type_inference.typeCheck = cases ctx -> cases
   Builtin NaturalBuild -> Right (
       Forall "_"
         (Forall "natural" (Constant Type)
-          (Forall "succ" (Forall "_" (Variable "natural" zero) (Variable "natural" zero))
-          (Forall "zero" (Variable "natural" zero) (Variable "natural" zero))))
+          (Forall "succ" (Forall "_" (Variable "natural" 0) (Variable "natural" 0))
+          (Forall "zero" (Variable "natural" 0) (Variable "natural" 0))))
         (Builtin Natural))
   Builtin NaturalFold -> Right (
     Forall "_" (Builtin Natural)
        (Forall "natural" (Expression.Constant Type)
-          (Forall "succ" (Forall "_" (Variable "natural" zero) (Variable "natural" zero))
-            (Forall "zero" (Variable "natural" zero)
-              (Variable "natural" zero)))))
+          (Forall "succ" (Forall "_" (Variable "natural" 0) (Variable "natural" 0))
+            (Forall "zero" (Variable "natural" 0)
+              (Variable "natural" 0)))))
   Builtin NaturalIsZero -> Right (Forall "_" (Builtin Natural) (Builtin Bool))
   Builtin NaturalEven -> Right (Forall "_" (Builtin Natural) (Builtin Bool))
   Builtin NaturalOdd -> Right (Forall "_" (Builtin Natural) (Builtin Bool))
@@ -160,43 +160,43 @@ type_inference.typeCheck = cases ctx -> cases
     Forall "a" (Constant Type)
       (Forall "_"
         (Forall "list" (Constant Type)
-          (Forall "cons" (Forall "_" (Variable "a" zero) (Forall "_" (Variable "list" zero) (Variable "list" zero)))
-            (Forall "nil" (Variable "list" zero) (Variable "list" zero))))
-        (Application (Builtin List) (Variable "a" zero))))
+          (Forall "cons" (Forall "_" (Variable "a" 0) (Forall "_" (Variable "list" 0) (Variable "list" 0)))
+            (Forall "nil" (Variable "list" 0) (Variable "list" 0))))
+        (Application (Builtin List) (Variable "a" 0))))
 
   -- Γ ⊢ List/fold : ∀(a : Type) → List a → ∀(list : Type) → ∀(cons : a → list → list) → ∀(nil : list) → list
   Builtin ListFold -> Right (
     Forall "a" (Constant Type)
-      (Forall "_" (Application (Builtin List) (Variable "a" zero))
+      (Forall "_" (Application (Builtin List) (Variable "a" 0))
         (Forall "list" (Constant Type)
-          (Forall "cons" (Forall "_" (Variable "a" zero) (Forall "_" (Variable "list" zero) (Variable "list" zero)))
-            (Forall "nil" (Variable "list" zero) (Variable "list" zero))))))
+          (Forall "cons" (Forall "_" (Variable "a" 0) (Forall "_" (Variable "list" 0) (Variable "list" 0)))
+            (Forall "nil" (Variable "list" 0) (Variable "list" 0))))))
 
   -- Γ ⊢ List/length : ∀(a : Type) → List a → Natural
   Builtin ListLength -> Right (
     Forall "a" (Constant Type)
-      (Forall "_" (Application (Builtin List) (Variable "a" zero)) (Builtin Natural)))
+      (Forall "_" (Application (Builtin List) (Variable "a" 0)) (Builtin Natural)))
 
   -- Γ ⊢ List/head : ∀(a : Type) → List a → Optional a
   Builtin ListHead -> Right (
     Forall "a" (Constant Type)
-      (Forall "_" (Application (Builtin List) (Variable "a" zero)) (Application (Builtin Optional) (Variable "a" zero))))
+      (Forall "_" (Application (Builtin List) (Variable "a" 0)) (Application (Builtin Optional) (Variable "a" 0))))
 
   -- Γ ⊢ List/last : ∀(a : Type) → List a → Optional a
   Builtin ListLast -> Right (
     Forall "a" (Constant Type)
-      (Forall "_" (Application (Builtin List) (Variable "a" zero)) (Application (Builtin Optional) (Variable "a" zero))))
+      (Forall "_" (Application (Builtin List) (Variable "a" 0)) (Application (Builtin Optional) (Variable "a" 0))))
 
   -- Γ ⊢ List/indexed : ∀(a : Type) → List a → List { index : Natural, value : a }
 
   Builtin ListIndexed -> Right (
     Forall "a" (Constant Type)
-      (Forall "_" (Application (Builtin List) (Variable "a" zero)) (Application (Builtin List) (RecordType [("index", Builtin Natural), ("value", Variable "a" zero)]))))
+      (Forall "_" (Application (Builtin List) (Variable "a" 0)) (Application (Builtin List) (RecordType [("index", Builtin Natural), ("value", Variable "a" 0)]))))
 
   -- Γ ⊢ List/reverse : ∀(a : Type) → List a → List a
   Builtin ListReverse -> Right (
     Forall "a" (Constant Type)
-      (Forall "_" (Application (Builtin List) (Variable "a" zero)) (Application (Builtin List) (Variable "a" zero))))
+      (Forall "_" (Application (Builtin List) (Variable "a" 0)) (Application (Builtin List) (Variable "a" 0))))
 
   -- Optional
   Builtin Optional -> Right (Forall "_" (Constant Type) (Constant Type))
@@ -209,7 +209,7 @@ type_inference.typeCheck = cases ctx -> cases
         Right tt -> Left "Argument to Some is not a value"
         Left err -> Left err
 
-  Builtin DhallNone -> Right (Forall "A" (Constant Type) (Application (Builtin Optional) (Variable "A" zero)))
+  Builtin DhallNone -> Right (Forall "A" (Constant Type) (Application (Builtin Optional) (Variable "A" 0)))
 
   -- Records
 
@@ -249,7 +249,7 @@ type_inference.typeCheck = cases ctx -> cases
       match betaNormalize expr with
         ut@(UnionType tExs) -> match List.find (((==) t) . Tuple.at1) tExs with
           None ->  Left ("The union type doesn't have an alternative '" ++ t ++ "'")
-          Optional.Some (_, (Optional.Some ex)) -> Right (Forall t ex (UnionType ((List.map (cases (k, ex) -> (k, Optional.map (shift +1 t zero) ex)) tExs))))
+          Optional.Some (_, (Optional.Some ex)) -> Right (Forall t ex (UnionType ((List.map (cases (k, ex) -> (k, Optional.map (shift +1 t 0) ex)) tExs))))
           Optional.Some (_, None) -> Right ut
 
         _ -> Left ("The field '" ++ t ++ "' is accessed on something that is not a union")
@@ -317,7 +317,7 @@ type_inference.typeCheck = cases ctx -> cases
     Left err -> Left err
     Right inputType@(Constant c1) ->
       newCtx = match ctx with
-        Context tEx -> Context (List.map (cases (k, t) -> (k, shift +1 x zero t)) ((x, t1) +: tEx))
+        Context tEx -> Context (List.map (cases (k, t) -> (k, shift +1 x 0 t)) ((x, t1) +: tEx))
       match typeCheck newCtx t2 with
         Left err -> Left err
         Right outputType@(Constant c2) -> Right (Constant (functionCheck c1 c2))
@@ -365,7 +365,7 @@ type_inference.typeCheck = cases ctx -> cases
       a1 = betaNormalize a0
       newCtx = match ctx with
         -- Context tEx -> Context ((x, a1) +: (List.map (cases (k, t) -> (k, shift +1 x zero t)) tEx))
-        Context tEx -> Context ((List.map (cases (k, t) -> (k, shift +1 x zero t)) ((x, a1) +: tEx)))
+        Context tEx -> Context ((List.map (cases (k, t) -> (k, shift +1 x 0 t)) ((x, a1) +: tEx)))
       match typeCheck newCtx b with
         Left err -> Left err
         Right outputType -> Right (Forall x a1 outputType)
@@ -377,9 +377,9 @@ type_inference.typeCheck = cases ctx -> cases
         match typeCheck ctx a with
           Left err -> Left err
           Right ta1 | equivalent ta0 ta1 ->
-            a1 = shift +1 x zero a
-            tb1 = substitute tb0 x zero a1
-            b2 = shift -1 x zero tb1
+            a1 = shift +1 x 0 a
+            tb1 = substitute tb0 x 0 a1
+            b2 = shift -1 x 0 tb1
             b3 = betaNormalize b2
             Right b3
           Right ta1 -> Left ("Cannot apply argument to function, function expects type " ++ (printExpression ta0) ++ ", but argument has type " ++ (printExpression ta1))
@@ -394,9 +394,9 @@ type_inference.typeCheck = cases ctx -> cases
           Optional.Some false -> Left ("Type of '" ++ x ++ "' doesn't match declared type in let expression")
           _ ->
             a1 = betaNormalize a
-            a2 = shift +1 x zero a1
-            b1 = substitution.substitute b x zero a2
-            b2 = shift -1 x zero b1
+            a2 = shift +1 x 0 a1
+            b1 = substitution.substitute b x 0 a2
+            b2 = shift -1 x 0 b1
             typeCheck ctx b2
 
   Annotation e t ->  match typeCheck ctx e with
@@ -513,12 +513,12 @@ type_inference.mergeReduceType oResultType alternativeTypes handlerTypes =
       _ -> go (Some typ, restAlternatives, restHandlers)
     (oType, (x, Optional.Some altType) +: restAlternatives, (y, Forall z inputType typ0) +: restHandlers) | x == y ->
       if (equivalent altType inputType) then
-        typ = shift -1 z zero typ0
+        typ = shift -1 z 0 typ0
         match Optional.map (equivalent typ) oType with
           Optional.Some false -> Left ("Type for handler for `" ++ x ++ "` is `" ++ (printExpression typ) ++ "`, doesn't match type `" ++ (Optional.getOrElse "" (Optional.map printExpression oType)))
           _ ->
             -- ensure z not free in typ
-            match filterExpressions (e -> e === Variable z zero) typ0 with
+            match filterExpressions (e -> e === Variable z 0) typ0 with
               [] -> go (Some typ, restAlternatives, restHandlers)
               _ -> Left ("Variable '" ++ z ++ "' is used in the type of handler for '" ++ x)
       else Left ("Handler for alternative `" ++ x ++ "` doesn't have the correct input type")

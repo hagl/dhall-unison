@@ -1,27 +1,27 @@
 use syntax.TextLiteral Chunks
 use syntax.Constant
 use syntax Expression
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome Import
 
 alpha_normalization.alphaNormalize: Expression -> Expression
 alpha_normalization.alphaNormalize = cases
   Lambda "_" A0 b0 -> Lambda "_" (alphaNormalize A0) (alphaNormalize b0)
   Lambda x A0 b0 ->
-    b1 = shift +1 "_" zero b0
-    b2 = substitute b1 x zero (Variable "_" zero)
-    b3 = shift -1 x zero b2
+    b1 = shift +1 "_" 0 b0
+    b2 = substitute b1 x 0 (Variable "_" 0)
+    b3 = shift -1 x 0 b2
     Lambda "_" (alphaNormalize A0) (alphaNormalize (b3))
   Forall "_" A0 B0 -> Forall "_" (alphaNormalize A0) (alphaNormalize B0)
   Forall x A0 B0 ->
-    B1 = shift +1 "_" zero B0
-    B2 = substitute B1 x zero (Variable "_" zero)
-    B3 = shift -1 x zero B2
+    B1 = shift +1 "_" 0 B0
+    B2 = substitute B1 x 0 (Variable "_" 0)
+    B3 = shift -1 x 0 B2
     Forall "_" (alphaNormalize A0) (alphaNormalize B3)
   Let "_" t a0 b0 -> Let "_" (Optional.map alphaNormalize t) (alphaNormalize a0) (alphaNormalize b0)
   Let x t a0 b0 ->
-    b1 = shift +1 "_" zero b0
-    b2 = substitute b1 x zero (Variable "_" zero)
-    b3 = shift -1 x zero b2
+    b1 = shift +1 "_" 0 b0
+    b2 = substitute b1 x 0 (Variable "_" 0)
+    b3 = shift -1 x 0 b2
     Let "_" (Optional.map alphaNormalize t) (alphaNormalize a0) (alphaNormalize b3)
   Variable x n -> Variable x n
   If t0 l0 r0 -> If (alphaNormalize t0) (alphaNormalize l0) (alphaNormalize r0)
@@ -56,12 +56,12 @@ use test
 test> alpha_normalization.alphaNormalize.tests.ex1 = check(alphaNormalize(
   Lambda "a" (Expression.Constant Constant.Type) (
     Lambda "b" (Expression.Constant Constant.Type) (
-      Lambda "x" (Variable "a" zero) (
-        Lambda "y" (Variable "b" zero) (
-          Variable "x" zero)))))
+      Lambda "x" (Variable "a" 0) (
+        Lambda "y" (Variable "b" 0) (
+          Variable "x" 0)))))
   ===
   Lambda "_" (Expression.Constant Constant.Type) (
     Lambda "_" (Expression.Constant Constant.Type) (
-      Lambda "_" (Variable "_" one) (
-        Lambda "_" (Variable "_" one) (
-          Variable "_" one)))))
+      Lambda "_" (Variable "_" 1) (
+        Lambda "_" (Variable "_" 1) (
+          Variable "_" 1)))))

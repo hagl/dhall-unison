@@ -3,13 +3,24 @@ use support.Date Date
 use support.Time Time
 use support.TimeZone TimeZone
 use syntax
-use syntax.ImportType Path
+use syntax URL
+use syntax.URL URL
+use syntax File
+use syntax.File File
+use syntax FilePrefix
+use syntax.FilePrefix Absolute Here Home Parent
+use syntax Scheme
+use syntax.Scheme HTTP HTTPS
+use syntax SHA256Digest
+use syntax.SHA256Digest SHA256Digest
+use syntax.ImportType Path Missing Remote Env
 use syntax.TextLiteral Chunks
 use syntax.ImportMode Code RawText Location
 use syntax.Constant Type Kind Sort
 use syntax Expression
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome Import
 use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend CombineRecordTerms Prefer CombineRecordTypes Alternative Equivalent Some
+use syntax.Builtin DhallNone
 
 utils.escapeText: Text -> Text
 utils.escapeText t =
@@ -54,7 +65,7 @@ utils.printExpression = cases
       Optional.Some T -> " : " ++ (printExpression T)
       None -> ""
     "let " ++ x ++ ot ++ " = " ++ (printExpression a0) ++ " in " ++ (printExpression b0)
-  Variable x n -> if (Natural.isZero n) then x else x ++ "@" ++ (Natural.toDecimalText n)
+  Variable x n -> if n Nat.== 0 then x else x ++ "@" ++ (Nat.toText n)
   If t0 l0 r0 -> "if " ++ (printExpression t0) ++ " then " ++ (printExpression l0) ++ " else " ++ (printExpression r0)
   Merge t0 u0 t -> "merge " ++ (printExpression t0) ++ " " ++ (printExpression u0) ++ (Optional.getOrElse "" (Optional.map (e -> " : " ++ printExpression(e)) t))
   ToMap t0 t -> "toMap " ++ (printExpression t0) ++ (Optional.getOrElse "" (Optional.map (e -> " : " ++ printExpression(e)) t))

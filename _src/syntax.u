@@ -3,7 +3,10 @@ use syntax TextLiteral
 use syntax.TextLiteral Chunks
 use syntax.Constant
 use syntax Expression
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome
+
+syntax.addTextToTextLiteral : Text -> TextLiteral -> TextLiteral
+syntax.addTextToTextLiteral t = cases (Chunks l x) -> Chunks l (x Text.++ t)
 
 (syntax.TextLiteral.<>) : TextLiteral -> TextLiteral -> TextLiteral
 tl1 syntax.TextLiteral.<> tl2 = match tl1 with
@@ -11,9 +14,7 @@ tl1 syntax.TextLiteral.<> tl2 = match tl1 with
     Chunks xys1 z1 -> match uncons xys1 with
       None -> Chunks xys0 (z0 Text.++ z1)
       Optional.Some ((x1, y1), t) -> Chunks (xys0 List.++ ((z0 Text.++ x1, y1) List.+: t)) z1
----
-syntax.addTextToTextLiteral : Text -> TextLiteral -> TextLiteral
-syntax.addTextToTextLiteral t = cases (Chunks l x) -> Chunks l (x Text.++ t)
+
 --
 syntax.addExpresionToTextLiteral : syntax.Expression -> TextLiteral -> TextLiteral
 syntax.addExpresionToTextLiteral e = cases (Chunks l x) -> Chunks (l List.++ [(x, e)]) ""

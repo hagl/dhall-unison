@@ -3,18 +3,34 @@ use support.Date Date
 use support.Time Time
 use support.TimeZone TimeZone
 
-use syntax.ImportMode Code Location
-use syntax.ImportType
-use syntax ImportType URL
+use syntax URL
 use syntax.URL URL
+use syntax File
+use syntax.File File
+use syntax FilePrefix
+use syntax.FilePrefix Absolute Here Home Parent
+use syntax Scheme
+use syntax.Scheme HTTP HTTPS
+use syntax SHA256Digest
+use syntax.SHA256Digest SHA256Digest
+use syntax.ImportMode RawText
+use syntax ImportType
+use syntax.ImportType Missing
+use syntax.ImportType Remote
+use syntax.ImportType Env
+use syntax.ImportType Path
+
+
 use syntax Expression
 use syntax Builtin Operator Constant
 use syntax.Builtin Builtin._None
 use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend CombineRecordTerms Prefer CombineRecordTypes Alternative Equivalent Some
 use syntax.Constant Type Kind Sort
-use syntax.Builtin Optional Natural Integer Double Text List NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
-use syntax.Expression DhallSome Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Builtin Optional Natural Integer Double Text List NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False DhallNone
+use syntax.Expression DhallSome Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant Import
 use syntax.TextLiteral Chunks
+use syntax ImportMode
+use syntax.ImportMode Code Location
 -- use support.Integer Integer
 use support encodeFloat
 
@@ -102,12 +118,8 @@ binary.encode expression =
   sortByFirst : [(a, b)] -> [(a, b)]
   sortByFirst = List.sortBy Tuple.at1
   match expression with
-    Variable "_" n -> match Natural.toNat n with
-      Some m -> TPosInt m
-      None -> TPosInteger n
-    Variable x n -> match Natural.toNat n with
-      Some m -> TList [TString x, TPosInt m]
-      None -> TList [TString x, TPosInteger n]
+    Variable "_" n -> TPosInt n
+    Variable x n -> TList [TString x, TPosInt n]
     Builtin True -> TBool true
     Builtin False -> TBool false
     Builtin b -> TString (encodeBuiltin b)
@@ -433,12 +445,16 @@ binary.decodeTerm t =
     TString t -> readBuiltin t
     TList [TString t, TPosInt n] ->
       if t Text.== "_" then Left "Variable '_' must be encoded as an integer"
-        else Right (Variable t (Natural.fromNat n))
+        else Right (Variable t n)
     TList [TString t, TPosInteger n] ->
       if t Text.== "_" then Left "Variable '_' must be encoded as an integer"
-        else Right (Variable t n)
-    TPosInt n -> Right (Variable "_" (Natural.fromNat n))
-    TPosInteger n -> Right (Variable "_" n)
+        else match (Natural.toNat n) with
+          Some m -> Right (Variable t m)
+          None -> Left "unlimited De Brujin indexes are not supported"
+    TPosInt n -> Right (Variable "_" n)
+    TPosInteger n -> match (Natural.toNat n) with
+          Some m -> Right (Variable "_" m)
+          None -> Left "unlimited De Brujin indexes are not supported"
     TList ((TPosInt 0) +: (tf +: rest)) ->
       if (List.size rest == 0) then Left "Function application needs at least 1 argument"
         else List.foldLeft (cases

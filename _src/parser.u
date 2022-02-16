@@ -1,13 +1,20 @@
 use .external.stew.parser Parser ErrorFancy
 use .external.stew.parser.Parser <*
+use .external.stew.parser.Parser.ascii char
 use parser.util string
+use syntax TextLiteral
 use syntax.TextLiteral Chunks
 use syntax.Constant
 use syntax Expression
 use syntax addTextToTextLiteral
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome
 use syntax.ImportMode Code RawText Location
+use syntax ImportType
+use syntax File
+use syntax.File File
 use support Date Time TimeZone Integer
+use syntax.Scheme HTTP HTTPS
+use syntax.ImportType Path Missing Remote Env
 
 use Optional
 
@@ -465,9 +472,9 @@ parser.operatorParsers =
     , notEqual <* whitespace $> '(a b -> Operator a NotEqual b)
     ]
 
-parser.hash : Parser e Char SHA256Digest
+parser.hash : Parser e Char syntax.SHA256Digest
 parser.hash = ((string "sha256:") *> (many (hexChar ^ hexChar))) $> List.map (cases (a,b) -> Optional.flatMap Natural.toNat (Natural.parse (fromCharList [a, b]) 16))>>= (
-      nats -> if (List.all Optional.isSome nats) && (List.size nats == 32) then Parser.const (SHA256Digest (Bytes.fromList (List.somes nats)))
+      nats -> if (List.all Optional.isSome nats) && (List.size nats == 32) then Parser.const (syntax.SHA256Digest.SHA256Digest (Bytes.fromList (List.somes nats)))
         else (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("Hash must consist of 64 hex digits")))))))
 
 -- ; Printable characters other than " ()[]{}<>/\,"
@@ -508,9 +515,9 @@ parser.quotedPathComponent = (many parser.quotedPathCharacter) $> Text.fromCharL
 parser.pathComponent : Parser e Char Text
 parser.pathComponent = (char ?/) *> (or unquotedPathComponent ((char ?" *> quotedPathComponent <* (char ?"))))
 
-parser.path : Parser e Char File
+parser.path : Parser e Char syntax.File
 parser.path = (many pathComponent) >>= (l -> match List.nonempty l with
-  Some nel -> Parser.const (File (List.reverse (Nonempty.init nel)) (Nonempty.last nel))
+  Some nel -> Parser.const (syntax.File.File (List.reverse (Nonempty.init nel)) (Nonempty.last nel))
   None  -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("Path must have at lease one component")))))))
 
 parser.parentPath : Parser e Char ImportType
@@ -686,8 +693,8 @@ parser.port = many ascii.digit $> Text.fromCharList
 
 parser.pathAbempty : Parser e Char File
 parser.pathAbempty = (some ((char ?/) *> parser.segment)) $> cases
-  [] -> File [] ""
-  (l :+ f) -> File (List.reverse l) f
+  [] -> syntax.File.File [] ""
+  (l :+ f) -> syntax.File.File (List.reverse l) f
 
 parser.segment : Parser e Char Text
 parser.segment = (some pChar) $> (Text.join "")
@@ -742,8 +749,6 @@ parser.alternative5 dExpression =
   completeExpression = (some shebang) *> whitespace *> dExpression <* whitespace
   interpolation = string "${" *> completeExpression <* string "}"
 
-  use dhall.prs._imports.syntax TextLiteral
-
   singleQuoteContinue : TextLiteral -> Parser e Char TextLiteral
   singleQuoteContinue tl = oneOf [
       interpolation >>= (exp -> singleQuoteContinue (addExpresionToTextLiteral exp tl))
@@ -789,7 +794,7 @@ parser.alternative5 dExpression =
         (some (dot *> whitespace *> anyLabelOrSome <* whitespace)) ^
         ((optional (equal *> whitespace *> dExpression)) <* whitespace)) >>= cases
           ((firstLabel, keys), Optional.Some expression) -> Parser.const (firstLabel, List.foldRight (k -> e -> RecordLiteral [(k, e)]) expression keys)
-          ((firstLabel, []), None) -> Parser.const (firstLabel, Variable firstLabel zero)
+          ((firstLabel, []), None) -> Parser.const (firstLabel, Variable firstLabel 0)
           ((_, _), None) -> Parser.fail (TrivialError unknown None (Set.singleton (Label "punned entry cannot contain dots")))
       combineRecordTerms : Expression ->{} Expression ->{} Expression
       combineRecordTerms e1 e2 = Expression.Operator e2 Operator.CombineRecordTerms e1
@@ -824,9 +829,12 @@ parser.alternative5 dExpression =
     Parser.label (openBracket *> whitespace *> (or nonEmptyListLiteral emptyListLiteral)) "literal"
 
   identifier : Parser e Char Expression
-  identifier = label ^ (optional (whitespace *> at *> whitespace *> naturalLiteral)) $> cases
-    (x, Optional.Some n) -> Variable x n
-    (x, None) -> Variable x zero
+  identifier = label ^ (optional (whitespace *> at *> whitespace *> naturalLiteral)) >>= cases
+    (x, Optional.Some n) ->
+      match Natural.toNat n with
+        Some m -> Parser.const (Variable x m)
+        None -> Parser.fail (TrivialError unknown None (Set.singleton (Label "natural De Bruijn indeces are not supported")))
+    (x, None) -> Parser.const (Variable x 0)
 
   builtinExpression : Parser e Char Expression
   builtinExpression =
@@ -1015,8 +1023,8 @@ parser.alternative5 dExpression =
 
       alternative5B1 : Expression -> Parser e Char Expression
       alternative5B1 a = (colon *> nonemptyWhitespace *> (match (a, a0Info) with
-        (Merge c d Nothing, NakedMergeOrSomeOrToMap) -> dExpression $> (b -> Merge c d (Some b))
-        (ToMap c Nothing, NakedMergeOrSomeOrToMap) -> dExpression $> (b -> ToMap c (Some b))
+        (Merge c d None, NakedMergeOrSomeOrToMap) -> dExpression $> (b -> Merge c d (Some b))
+        (ToMap c None, NakedMergeOrSomeOrToMap) -> dExpression $> (b -> ToMap c (Some b))
         _ -> dExpression $> (b -> Annotation a b)))
 
       alternative5B2 a = Parser.const a -- TODO a

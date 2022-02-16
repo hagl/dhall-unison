@@ -8,7 +8,7 @@ use syntax.TextLiteral Chunks
 use syntax.ImportMode Code RawText Location
 use syntax.Constant Type Kind Sort
 use syntax Expression
-use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant
+use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome
 use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend CombineRecordTerms Prefer CombineRecordTypes Alternative Equivalent Some
 use syntax.Builtin True False
 
