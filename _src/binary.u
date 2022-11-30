@@ -150,26 +150,27 @@ binary.encode expression =
     ProjectByType t0 T0 -> TList [TPosInt 10, encode t0, TList [encode T0]]
     UnionType xTs0 -> TList [TPosInt 11, TMap (sortByFirst (List.map (cases (k, t) -> (TString k, Optional.getOrElse TNull (Optional.map encode t))) xTs0))]
     If t0 l0 r0 -> TList [TPosInt 14, encode t0, encode l0, encode r0]
-    NaturalLiteral n -> match Natural.toNat n with
+    NaturalLiteral n -> match Natural.toMaybeNat n with
       Some nat -> TList [TPosInt 15, TPosInt nat]
       None -> TList [TPosInt 15, TPosInteger n]
-    IntegerLiteral (support.Integer.Integer false natural) -> match Natural.toNat natural with
+    IntegerLiteral (support.Integer.Integer false natural) -> match Natural.toMaybeNat natural with
       Some nat -> TList [TPosInt 16, TPosInt nat]
       None -> TList [TPosInt 16, TPosInteger natural]
     IntegerLiteral (support.Integer.Integer true natural) ->
       natural1 = natural Natural.- one
-      match Natural.toNat natural1 with
+      match Natural.toMaybeNat natural1 with
         Some nat -> TList [TPosInt 16, TNegInt nat]
         None -> TList [TPosInt 16, TNegInteger natural1]
     DoubleLiteral d -> TFloat (encodeFloat d)
     TextLiteral (Chunks xys0 z) -> TList ((TPosInt 18) +: List.foldRight (cases (t,ex) -> acc -> [TString t, encode ex] ++ acc) [TString z] xys0)
     Assert T0 -> TList [TPosInt 19, encode T0]
     Let _ _ _ _ ->
+      loop : ([Term] ->{} [Term]) -> Expression ->{} Term
       loop difference = cases
         Let x (Some A0) a0 c ->
-          loop (difference . (list -> [TString x, encode A0, encode a0] ++ list)) c
+          loop (compose difference (list -> [TString x, encode A0, encode a0] ++ list)) c
         Let x None a0 c ->
-          loop (difference . (list -> [TString x, TNull, encode a0] ++ list)) c
+          loop (compose difference (list -> [TString x, TNull, encode a0] ++ list)) c
         z0 -> TList ((TPosInt 25) +: (difference [ encode z0 ]))
       loop id expression
     Annotation t0 T0 -> TList [ TPosInt 26, encode t0, encode T0]
@@ -213,7 +214,8 @@ binary.encode expression =
         Env x -> [ TPosInt 6, TString x]
         Missing -> [ TPosInt 7 ]
       TList ([ TPosInt 24, hash1, importMode1 ] ++ importType1)
-binary.Term.toBytes: Term -> Bytes
+
+binary.Term.toBytes: Term ->{} Bytes
 binary.Term.toBytes = cases
   TPosInt n -> majorTypeIntArg 0 n
   TNegInt n -> majorTypeIntArg 1 n
@@ -232,18 +234,18 @@ binary.Term.toBytes = cases
   TNull -> majorTypeIntArg 7 22
   TSimple n | n <= 0xFF -> majorTypeIntArg 7 n
   TFloat bytes -> match Bytes.size bytes with
-    2 ->  Bytes.fromList [(Nat.shiftLeft 7 5) + 25] Bytes.++ bytes
-    4 ->  Bytes.fromList [(Nat.shiftLeft 7 5) + 26] Bytes.++ bytes
-    8 ->  Bytes.fromList [(Nat.shiftLeft 7 5) + 27] Bytes.++ bytes
+    2 ->  Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 25] Bytes.++ bytes
+    4 ->  Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 26] Bytes.++ bytes
+    8 ->  Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 27] Bytes.++ bytes
 
 use Nat
-binary.Term.internal.majorTypeIntArg : Nat -> Nat -> Bytes
+binary.Term.internal.majorTypeIntArg : Nat -> Nat ->{} Bytes
 binary.Term.internal.majorTypeIntArg mode = cases
-  value | value < 24 -> Bytes.fromList [(Nat.shiftLeft mode 5) + value]
-  value | value <= 0xFF -> Bytes.fromList [(Nat.shiftLeft mode 5) + 24, value]
-  value | value <= 0xFFFF -> Bytes.fromList [(Nat.shiftLeft mode 5) + 25] Bytes.++ (Bytes.encodeNat16be value)
-  value | value <= 0xFFFFFFFF -> Bytes.fromList [(Nat.shiftLeft mode 5) + 26] Bytes.++ (Bytes.encodeNat32be value)
-  value -> Bytes.fromList [(Nat.shiftLeft mode 5) + 27] Bytes.++ (Bytes.encodeNat64be value)
+  value | value < 24 -> Bytes.fromList.impl [(Nat.shiftLeft mode 5) + value]
+  value | value <= 0xFF -> Bytes.fromList.impl [(Nat.shiftLeft mode 5) + 24, value]
+  value | value <= 0xFFFF -> Bytes.fromList.impl [(Nat.shiftLeft mode 5) + 25] Bytes.++ (Bytes.encodeNat16be value)
+  value | value <= 0xFFFFFFFF -> Bytes.fromList.impl [(Nat.shiftLeft mode 5) + 26] Bytes.++ (Bytes.encodeNat32be value)
+  value -> Bytes.fromList.impl [(Nat.shiftLeft mode 5) + 27] Bytes.++ (Bytes.encodeNat64be value)
 
 -- inital byte to (major, additional)
 binary.Term.internal.parseInitialByte: Nat -> (Nat, Nat)
@@ -408,7 +410,7 @@ binary.decodeNatural : Bytes -> Optional Natural
 binary.decodeNatural bytes =
   match Text.fromUtf8.impl (Bytes.toBase16 bytes) with
     Left _ -> None
-    Right t -> Natural.parse t 16
+    Right t -> Natural.parse 16 t
 
 binary.decodeFile : [Term] -> Either Text File
 binary.decodeFile path =
@@ -448,11 +450,11 @@ binary.decodeTerm t =
         else Right (Variable t n)
     TList [TString t, TPosInteger n] ->
       if t Text.== "_" then Left "Variable '_' must be encoded as an integer"
-        else match (Natural.toNat n) with
+        else match (Natural.toMaybeNat n) with
           Some m -> Right (Variable t m)
           None -> Left "unlimited De Brujin indexes are not supported"
     TPosInt n -> Right (Variable "_" n)
-    TPosInteger n -> match (Natural.toNat n) with
+    TPosInteger n -> match (Natural.toMaybeNat n) with
           Some m -> Right (Variable "_" m)
           None -> Left "unlimited De Brujin indexes are not supported"
     TList ((TPosInt 0) +: (tf +: rest)) ->

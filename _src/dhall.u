@@ -107,7 +107,7 @@ DhallValue.fromExpression expr =
       Constant c -> fail "Constant"
   go expr ""
 
-evaluateSimple : Text -> Either Text DhallValue
+evaluateSimple : Text ->{} Either Text DhallValue
 evaluateSimple input =
   match parseText completeExpression input with
   Left error -> Left error
@@ -118,12 +118,12 @@ evaluateSimple input =
 
 
 {{ run a Dhall programm}}
-evaluate : Text ->{IO} Either Text DhallValue
+evaluate : Text ->{Exception, IO} Either Text DhallValue
 evaluate input = match normalizeExpression input with
   Right exp ->  DhallValue.fromExpression exp
   Left err -> Left err
 
-normalizeExpression : Text ->{IO} Either Text Expression
+normalizeExpression : Text ->{Exception, IO} Either Text Expression
 normalizeExpression input =
   path = Path Here (File [] ("_"))
   go input = match parseText completeExpression input with
@@ -135,9 +135,9 @@ normalizeExpression input =
           match type_inference.typeCheck Context.empty resolved with
               Left error -> Left ("Type error: " ++ error)
               Right typedExpression -> Right (betaNormalize resolved)
-  cache : '{Cache, IO, g} b ->{IO, g} b
+  cache : '{Cache, Exception, IO, g} b ->{IO, Exception, g} b
   cache = !import.setupCache
-  errOrLoader : (Either Text ('{RemoteLoader, IO, g} b ->{IO, g} b))
+  errOrLoader : (Either Text ('{RemoteLoader, Exception, IO, g} b ->{Exception, IO, g} b))
   errOrLoader =
     cache
       '(import.defaultEnvironment '(import.defaultFileLoader
