@@ -34,7 +34,7 @@ type_inference.Context.lookup  t n ctx =
   go : Nat -> [(Text, Expression)] -> Optional Expression
   go n = cases
     [] -> None
-    ((t1, e) +: rest) | t == t1 -> if n == 0 then Some e else go (Nat.drop n 1) rest
+    ((t1, e) +: rest) | t == t1 -> if n == 0 then Some e else go (n - 1) rest
     ( _  +: rest) -> go n rest
   match ctx with Context list -> go n list
 
@@ -245,7 +245,7 @@ type_inference.typeCheck = cases ctx -> cases
       None -> Left ("The record doesn't contain a field named '" ++ t ++ "'")
     Right (Constant c) ->
       match betaNormalize expr with
-        ut@(UnionType tExs) -> match List.find (((==) t) . Tuple.at1) tExs with
+        ut@(UnionType tExs) -> match List.find (compose ((==) t) Tuple.at1) tExs with
           None ->  Left ("The union type doesn't have an alternative '" ++ t ++ "'")
           Optional.Some (_, (Optional.Some ex)) -> Right (Forall t ex (UnionType ((List.map (cases (k, ex) -> (k, Optional.map (shift +1 t 0) ex)) tExs))))
           Optional.Some (_, None) -> Right ut
@@ -423,7 +423,7 @@ type_inference.typeCheck = cases ctx -> cases
 
   ToMap expr oT -> match typeCheck ctx expr with
     Left err -> Left err
-    Right (RecordType tExs) -> match (List.nonempty tExs, oT) with
+    Right (RecordType tExs) -> match (List.mayNonempty tExs, oT) with
       (None, None) -> Left ("toMap with an empty record needs a type annotation")
       (None, Optional.Some typ) ->
         match typeCheck ctx typ with
@@ -436,7 +436,7 @@ type_inference.typeCheck = cases ctx -> cases
         match typeCheck ctx elementType with
           Left err -> Left err
           Right (Constant Type) ->
-            if List.all ((equivalent elementType) . Tuple.at2) (Nonempty.tail nel) then
+            if List.all (compose (equivalent elementType) Tuple.at2) (Nonempty.tail nel) then
               resultType = (Application (Builtin List) (RecordType [("mapKey", (Builtin Text)), ("mapValue", elementType)]))
               match Optional.map (equivalent resultType) oT with
                 Optional.Some false -> Left ("annotated type of toMap doesn't match inferred type")
@@ -498,16 +498,16 @@ type_inference.withUpdateType t vt nel =
   match t with
     RecordType tExs ->
       hd = Nonempty.head nel
-      newType = match List.nonempty (Nonempty.tail nel) with
+      newType = match List.mayNonempty (Nonempty.tail nel) with
         None -> Right vt
         Optional.Some tl ->
-          nested = match List.find (((==) hd) . Tuple.at1) tExs with
+          nested = match List.find (compose ((==) hd) Tuple.at1) tExs with
             None -> RecordType []
             Optional.Some (_, t) -> t
           withUpdateType nested vt tl
       match newType with
         Left err -> Left err
-        Right nt -> Right (RecordType (List.sortBy Tuple.at1 ((hd, nt) +: (List.deleteFirst (((==) hd) . Tuple.at1) tExs ))))
+        Right nt -> Right (RecordType (List.sortBy Tuple.at1 ((hd, nt) +: (List.deleteFirst (compose ((==) hd) Tuple.at1) tExs ))))
     _ -> Left "Intermediate path in With expression doesn't point to a record"
 
 type_inference.mergeReduceType : Optional Expression -> [(Text, Optional Expression)] -> [(Text, Expression)] -> Either Text Expression

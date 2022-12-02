@@ -19,6 +19,7 @@ use syntax.SHA256Digest SHA256Digest
 use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome Import
 use syntax.Constant Type Kind Sort
 use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
+use uniparsec.Parser oneOf
 
 structural type import.ResolveErrorType = ImportError | UnrecoverableImportError| ParseError | TypeError
 structural type import.ResolveError = ResolveError import.ResolveErrorType Text
@@ -97,9 +98,9 @@ import.Cache.impl.load p = cases SHA256Digest bytes ->
     path = FilePath.FilePath (FilePath.toText p ++ "/" ++ hashToFileName bytes)
     match (catch
       '(bracket
-          '(openFile (path) Read)
-          closeFile
-          (fileHandle -> getBytes fileHandle (base.io.getFileSize path)))
+          '(open (path) Read)
+          close
+          (fileHandle -> getBytes fileHandle (IO.FilePath.getSize path)))
       |> Either.mapLeft cases Failure _ t _ -> t) with
       Left err ->
         None
@@ -123,7 +124,7 @@ import.Cache.impl.load p = cases SHA256Digest bytes ->
 import.Cache.impl.hashToFileName : Bytes -> Text
 import.Cache.impl.hashToFileName hash =
   base16 = Bytes.toBase16 hash
-  "1220" ++ (Text.fromCharList (List.map Char.fromNat (Bytes.toList base16)))
+  "1220" ++ (Text.fromCharList (List.filterMap Char.fromNat (Bytes.toList base16)))
 
 import.Cache.impl.store: FilePath -> Expression ->{IO} Boolean
 import.Cache.impl.store p expression =
@@ -134,8 +135,8 @@ import.Cache.impl.store p expression =
 
     match (catch
       '(bracket
-          '(openFile (path) Write)
-          closeFile
+          '(open (path) Write)
+          close
           (fileHandle -> putBytes fileHandle encoded))) with
       Left (Failure _ t _) ->
         Debug.watch ("Error writing to cache: " ++ t)
@@ -185,24 +186,24 @@ import.nestedReadWriteCache p f =
 -- returns None if $env is undefined or these directories don't exist and we cannot create them
 import.configureCache: Text -> [Text] -> {IO} ('{Cache, IO, g} b ->{Cache, IO, g} b)
 import.configureCache env dirs =
-  getOrCreate : Optional FilePath ->{IO, Exception} Text ->{IO, Exception} Optional FilePath
+  getOrCreate : Optional FilePath ->{IO} Text ->{IO, Exception} Optional FilePath
   getOrCreate path subfolder =
     Optional.flatMap (filePath ->
-      if not (fileExists filePath)
+      if not (FilePath.exists filePath)
         then
           printLine ("Cachedir doesn't exist or can't be created " ++ (FilePath.toText filePath))
           None
         else
           newPath = FilePath (FilePath.toText filePath ++ "/" ++ subfolder)
-          base.io.createDirectory newPath
+          IO.FilePath.createDirectory newPath
           Some newPath) path
 
   cacheDir = catch '(
-    match io.getEnv.impl env with
+    match IO.getEnv.impl env with
       Left err -> None
       Right t ->
         filePath = FilePath t
-        if not (fileExists filePath) -- TODO check permissions
+        if not (FilePath.exists filePath) -- TODO check permissions
           then
             printLine ("Cachedir doesn't exist  " ++ (FilePath.toText filePath))
             None
@@ -276,10 +277,7 @@ test> import.convertHeaderExpression.tests.ex1 = check(
 > Either.mapRight convertHeaderExpression (parseText parser.completeExpression "
     [{mapKey = \"User-Agent\", mapValue = \"dhall-unison\"},{mapKey = \"Header\", mapValue = \"Value\"}]")
 
-use .external.stew.http Headers
-use .external.stew.http.Headers Headers
-
-import.combineRequestHeaders : syntax.Scheme -> Text -> Map Text (Map Text Text) -> (Optional Expression) -> Either Text Headers
+import.combineRequestHeaders : syntax.Scheme -> Text -> Map Text (Map Text Text) -> (Optional Expression) ->{} Either Text Headers
 import.combineRequestHeaders scheme authority defaultHeaders oHeaders =
   errorOrHeaders =
     -- Debug.watch ("Header defaults: " ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "= {" ++ (Text.join ", " (List.map (cases (k,v) -> k ++ "=" ++ v) (Map.toList v))) ++ "}") (Map.toList defaultHeaders))))
@@ -354,25 +352,25 @@ import.queryParser.componentAllowedChars = Set.fromList (Text.toCharList ".-_~:@
 import.queryParser.pctEncoded : Parser e Char Nat
 import.queryParser.pctEncoded = (char ?%) *> parser.tokens.hexChar ^ parser.tokens.hexChar $> cases
   (c1, c2) ->
-    match Optional.flatMap Natural.toNat (Natural.parse (Text.fromCharList [c1, c2]) 16) with
+    match Optional.flatMap Natural.toMaybeNat (Natural.parse 16 (Text.fromCharList [c1, c2])) with
       Optional.Some n -> n
 
 import.queryParser.pctEncodedChars : Parser e Char Text
-import.queryParser.pctEncodedChars = many import.queryParser.pctEncoded >>= cases
+import.queryParser.pctEncodedChars = many1 import.queryParser.pctEncoded >>= cases
     l ->
-      match Text.fromUtf8.impl (Bytes.fromList l) with
+      match Either.flatMapRight Text.fromUtf8.impl (catch '(Bytes.fromList l)) with
         Right t -> Parser.const t
         Left (Failure _ err _) ->
           Parser.fail (FancyError Location.unknown (Set.singleton (ErrorFail ("Can't convert percent-encoded URL params"))))
 
 import.queryParser.componentChars : Parser e Char Text
-import.queryParser.componentChars = Parser.map Text.fromCharList (many (oneOf [
+import.queryParser.componentChars = Parser.map Text.fromCharList (many1 (oneOf [
     Parser.token (c -> if Set.contains c import.queryParser.componentAllowedChars then Some c else None),
     ascii.alphanum  ]))
 
 import.queryParser.component : Parser e Char Text
 -- import.queryParser.component = Parser.const ""
-import.queryParser.component = Parser.map (Text.join "") (many (oneOf [
+import.queryParser.component = Parser.map (Text.join "") (many1 (oneOf [
     import.queryParser.componentChars,
     import.queryParser.pctEncodedChars
   ]))
@@ -391,6 +389,7 @@ import.parseQuery t =
 
 import.defaultHeaderRemoteLoader: Map Text (Map Text Text) -> '{RemoteLoader, g} b ->{IO, g} b
 import.defaultHeaderRemoteLoader defaults =
+  handler : abilities.Request {RemoteLoader} b ->{IO} b
   handler = cases
     {loadRemote previous url oHeaders -> resume} -> match url with (URL scheme authority file oQuery) ->
     -- {loadRemote url oHeaders -> resume} -> match url with (URL scheme authority file oQuery) ->
@@ -400,16 +399,18 @@ import.defaultHeaderRemoteLoader defaults =
         Left err -> Left err
         Right headers ->
           s = match scheme with
-            HTTPS -> (http.Scheme.Scheme "https")
-            HTTP -> (http.Scheme.Scheme "http")
-          p = match file with File dirs f -> http.Path.Path (List.reverse (f +: dirs))
-          q = Query (Optional.getOrElse Map.empty (Optional.map parseQuery oQuery))
-          uri = http.Uri.Uri s (Some (Authority None (HostName authority) None)) p q None
-          message = http.Message.Message http.Version.http11 headers http.Body.empty http.Attributes.empty
-          req _ = Debug.watch "pre req" (request (Debug.watch "p1 req" (Request message GET uri)))
+            HTTPS -> Some (lib.http.Uri.Scheme.Scheme "https")
+            HTTP -> Some (lib.http.Uri.Scheme.Scheme "http")
+          p = match file with File dirs f -> lib.http.Uri.Path.Path (List.reverse (f +: dirs))
+          q = http.Uri.Query.Params (Optional.getOrElse Map.empty (Optional.map parseQuery oQuery))
+          uri = http.Uri.Uri s (Some (Authority None (HostName authority) None)) p (Some q) None
+          -- message = http.Message.Message http.Version.http11 headers http.Body.empty http.Attributes.empty
+          -- req _ = Debug.watch "pre req" (request (Debug.watch "p1 req" (Request message GET uri)))
+          -- req _ = Debug.watch "pre req" (request (Debug.watch "p1 req" (HttpRequest GET http.Version.http11 uri headers http.Body.empty)))
+          req _ = request (HttpRequest GET http.Version.http11 uri headers http.Body.empty)
           response = catch '(handle !req with Http.handler)
-          Debug.watch "post req" match response with
-            Right resp@(Response _ (Status s st) (Headers headers) (Optional.Some (Body bytes))) | Response.isSuccess resp ->
+          match response with
+            Right resp@(HttpResponse (Status s st) _ (Headers headers) (Body bytes)) | HttpResponse.isSuccess resp ->
                 if not (corsCompliant previous (Remote url None) headers)
                   then Left "CORS error"
                   else
@@ -418,7 +419,7 @@ import.defaultHeaderRemoteLoader defaults =
                         -- Debug.watch ("Response text: '" ++ t ++ "'")
                           Right t
                       Left (Failure _ t _) -> Left t
-            Right resp@(Response _ (Status s st) _ (Optional.Some (Body bytes))) ->
+            Right resp@(HttpResponse (Status s st) _ _ (Body bytes)) ->
               Left ((Nat.toText s) ++ " " ++ st)
               -- Debug.watch ("Response status " ++ (Nat.toText s) ++ " " ++ st)
               --   match Text.fromUtf8.impl bytes with
@@ -437,7 +438,7 @@ import.defaultEnvironment: '{EnvLoader, IO, g} b ->{IO, g} b
 import.defaultEnvironment f =
   handler = cases
     {loadEnv name -> resume} ->
-      res = match io.getEnv.impl name with
+      res = match IO.getEnv.impl name with
         Left (Failure _ err _) -> Left (ResolveError ImportError err)
         Right v -> Right v
       handle resume res with handler
@@ -500,14 +501,14 @@ import.expressionToHashAndEncoded expression =
   (hashed, bytes)
 
 import.hashExpression : Expression -> Bytes
-import.hashExpression = Tuple.at1 . expressionToHashAndEncoded
+import.hashExpression = compose Tuple.at1 expressionToHashAndEncoded
 
 
 import.hashExpressionToText : Expression -> Text
 import.hashExpressionToText expression =
   hashed = hashExpression expression
   base16 = Bytes.toBase16 hashed
-  Text.fromCharList (List.map Char.fromNat (Bytes.toList base16))
+  Text.fromCharList (List.filterMap Char.fromNat (Bytes.toList base16))
 
 
 import.defaultFileLoader: '{LocalLoader, IO, g} b ->{EnvLoader, IO, g} b
@@ -526,9 +527,9 @@ import.loadLocalFile prefix file =
       FilePath.FilePath (localPath prefix file)
   catch
     '(bracket
-        '(openFile (path) Read)
-        closeFile
-        (fileHandle -> Text.fromUtf8 (getBytes fileHandle (base.io.getFileSize path))))
+        '(open (path) Read)
+        close
+        (fileHandle -> Text.fromUtf8 (getBytes fileHandle (IO.FilePath.getSize path))))
     |> Either.mapLeft cases Failure _ t _ -> ResolveError ImportError t
 
 import.resolveExpression : Expression ->{Import} Expression

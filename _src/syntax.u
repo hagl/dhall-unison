@@ -72,7 +72,7 @@ syntax.longestSharedWhitespacePrefix literals =
     -- for the last line
     oldLast = Nonempty.last literals
     oldInit = Nonempty.init literals
-    newInit =  filter (not . emptyLine) oldInit
+    newInit =  filter (compose not emptyLine) oldInit
     filteredLines = newInit :+ oldLast
 
     sharedPrefix : [Char] ->{} [Char] ->{} [Char]

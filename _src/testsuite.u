@@ -25,19 +25,22 @@ testsuite.runTestsRecursive : Text -> Text-> (Text -> Text -> Boolean) -> (Nat, 
 testsuite.runTestsRecursive testDirectory testSuffix testRunner =
   removeSuffix : Text -> Text -> Optional Text
   removeSuffix suffix text =
-    if size suffix > size text then None
+    if size suffix Nat.> size text then None
       else
-        d = Int.truncate0 (size text - (size suffix))
+        d = size text - (size suffix)
         if drop d text == suffix then Some (take d text) else None
+  removePrefix : Text -> Text
+  removePrefix t = Text.takeRightWhile (c -> c Char.!= ?/) t
 
   printLine ("Running tests in " ++ testDirectory)
   fp = FilePath.FilePath testDirectory
-  contents = io.directoryContents fp
-  tests = filterMap (removeSuffix testSuffix) contents
+  contents = List.map (compose removePrefix FilePath.toText) (IO.FilePath.directoryContents fp)
+  -- tests = filterMap (compose (removeSuffix testSuffix) FilePath.toText) contents
   -- tests = filter ((==) "RecordProjectionByTypeJudgmentalEquality") (filterMap (removeSuffix testSuffix) contents)
+  tests = filterMap (removeSuffix testSuffix) contents
   isSubfolder f =
     path = testDirectory ++ "/" ++ f
-    if io.isDirectory (FilePath.FilePath path) && (f != ".") && (f != "..") then Some(path) else None
+    if IO.FilePath.isDirectory (FilePath.FilePath path) && (f != ".") && (f != "..") then Some(path) else None
   subdirs = filterMap isSubfolder contents
   test t =
     result = testRunner testDirectory t
@@ -51,10 +54,10 @@ testsuite.runTestsRecursive testDirectory testSuffix testRunner =
 
 testsuite.parseTestcase : FilePath -> Either Text Expression
 testsuite.parseTestcase inputPath =
-  input = io.openFile inputPath FileMode.Read
-  inputBytes = getBytes input (base.io.getFileSize inputPath)
+  input = open inputPath FileMode.Read
+  inputBytes = getBytes input (IO.FilePath.getSize inputPath)
   inputText = Text.fromUtf8 inputBytes
-  io.closeFile input
+  close input
   parseText parser.completeExpression inputText
 
 testsuite.encodeExpression : Expression -> Bytes
@@ -74,9 +77,9 @@ testsuite.parseSuccessTest testDir name =
   testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhall")
   bytes = Optional.map encodeExpression (Either.right (parseTestcase testPath))
   checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.dhallb")
-  check = io.openFile checkPath FileMode.Read
-  checkBytes = getBytes check (base.io.getFileSize checkPath)
-  io.closeFile check
+  check = open checkPath FileMode.Read
+  checkBytes = getBytes check (IO.FilePath.getSize checkPath)
+  close check
   success = bytes === Some checkBytes
   success
 
@@ -84,9 +87,9 @@ testsuite.parseFailureTest : Text -> Text -> Boolean
 testsuite.parseFailureTest testDir name =
   use Text
   inputPath = FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhall")
-  input = io.openFile inputPath FileMode.Read
-  inputBytes = getBytes input (base.io.getFileSize inputPath)
-  io.closeFile input
+  input = open inputPath FileMode.Read
+  inputBytes = getBytes input (IO.FilePath.getSize inputPath)
+  close input
   match catch '(
     match parseText parser.completeExpression (Text.fromUtf8 inputBytes) with
       Right exp -> false
@@ -206,10 +209,10 @@ testsuite.semanticHashTest testDir name =
 
   use Text
   checkPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "B.hash")
-  check = io.openFile checkPath FileMode.Read
-  checkBytes = getBytes check (base.io.getFileSize checkPath)
+  check = open checkPath FileMode.Read
+  checkBytes = getBytes check (IO.FilePath.getSize checkPath)
   checkHash = Text.trim (Text.fromUtf8 checkBytes)
-  io.closeFile check
+  close check
   success = Optional.map ((Text.==) checkHash) hash === Some true
   success
 
@@ -219,9 +222,9 @@ testsuite.binaryDecodeSuccessTest testDir name =
   testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "A.dhallb")
   inputBytes =
     bracket
-      '(openFile (testPath) Read)
-      closeFile
-      (fileHandle -> (getBytes fileHandle (base.io.getFileSize testPath)))
+      '(open (testPath) Read)
+      close
+      (fileHandle -> (getBytes fileHandle (IO.FilePath.getSize testPath)))
   decodedExpression = match binary.Term.fromBytes inputBytes with
     Left err ->
       printLine ("Decoding error: " ++ err)
@@ -242,9 +245,9 @@ testsuite.binaryDecodeFailureTest testDir name =
   testPath = FilePath.FilePath (testDir ++ "/" ++ name ++ ".dhallb")
   inputBytes =
     bracket
-      '(openFile (testPath) Read)
-      closeFile
-      (fileHandle -> (getBytes fileHandle (base.io.getFileSize testPath)))
+      '(open (testPath) Read)
+      close
+      (fileHandle -> (getBytes fileHandle (IO.FilePath.getSize testPath)))
   decodedExpression = match binary.Term.fromBytes inputBytes with
     Left err ->
       Left err
@@ -299,7 +302,7 @@ testsuite.importTest cacheDir testDir name =
     use .dhall.trunk.utils
     envPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "ENV.dhall")
     env =
-      if fileExists envPath
+      if exists envPath
         then
           match parseTestcase envPath with
           Left err -> Debug.watch ("Error parsing env " ++ err) (Left err)
@@ -359,7 +362,7 @@ testsuite.importFailureTest cacheDir testDir name =
     use .dhall.trunk.utils
     envPath = FilePath.FilePath (testDir ++ "/" ++ name ++ "ENV.dhall")
     env =
-      if fileExists envPath
+      if exists envPath
         then
           match parseTestcase envPath with
           Left err -> Debug.watch ("Error parsing env " ++ err) (Left err)
@@ -402,7 +405,7 @@ testsuite.importFailureTestCheck testDir name dirs =
 
 testsuite.runTests : Text ->{IO, Exception} ()
 testsuite.runTests path =
-  origDirectory = !io.getCurrentDirectory
+  origDirectory = !getCurrentDirectory
   withDefaultLoader : ('{RemoteLoader, EnvLoader, Cache, LocalLoader, g} b) -> {g, Exception, IO} b
   withDefaultLoader f =
     import.mapEnvironment Map.empty
@@ -410,8 +413,8 @@ testsuite.runTests path =
           '(import.withoutCache f)))
   startTime = !systemTimeMicroseconds
   bracket
-    '(io.setCurrentDirectory (FilePath (path ++ "/..")))
-    '(io.setCurrentDirectory origDirectory)
+    '(setCurrentDirectory (FilePath (path ++ "/..")))
+    '(setCurrentDirectory origDirectory)
     '(printTestStatus path (List.foldLeft updateResults (0,0) [
           -- runTestsRecursive  ("./dhall-lang/tests/parser/success") "A.dhall" parseSuccessTest,
           runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
@@ -419,9 +422,9 @@ testsuite.runTests path =
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),
           -- runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
-          -- runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall"))),
           -- runTestsRecursive  ("./dhall-lang/tests/import/failure") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
-          runTestsRecursive  ("./dhall-lang/tests/import/failure/unit/cors") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          -- runTestsRecursive  ("./dhall-lang/tests/import/failure/unit/cors") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest),
           -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
           -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,

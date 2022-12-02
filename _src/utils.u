@@ -36,9 +36,9 @@ utils.escapeText t =
     ?\\ -> [?\\, ?\\]
     c ->
       n = Char.toNat c
-      if n < 32 then
+      if n Nat.< 32 then
         hexEncoding = Natural.toHex (Natural.fromNat n)
-        Text.toCharList ((if n < 16 then "\\u000" else "\\u00") ++ hexEncoding)
+        Text.toCharList ((if n Nat.< 16 then "\\u000" else "\\u00") ++ hexEncoding)
       else [c]
   "\"" ++ Text.fromCharList (List.flatMap escape (Text.toCharList t)) ++ "\""
 
@@ -104,7 +104,7 @@ utils.printExpression = cases
 
 utils.printDigest : SHA256Digest -> Text
 utils.printDigest = cases SHA256Digest bytes ->
-  Text.fromCharList (List.map Char.fromNat (Bytes.toList (Bytes.toBase64 bytes)))
+  Text.fromCharList (List.filterMap Char.fromNat (Bytes.toList (Bytes.toBase64 bytes)))
 
 utils.printFile : File -> Text
 utils.printFile = cases File dirs file -> Text.join "/" (List.reverse (file +: dirs))

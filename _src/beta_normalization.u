@@ -7,7 +7,7 @@ use syntax.Builtin NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd
 
 use Natural
 
-equivalence.equivalent : Expression -> Expression -> Boolean
+equivalence.equivalent : Expression -> Expression ->{} Boolean
 equivalence.equivalent e1 e2 =
   encodeNormalized e = e |> betaNormalize |> alphaNormalize |> encode |> Term.toBytes
   encodeNormalized e1 === encodeNormalized e2
@@ -15,7 +15,7 @@ equivalence.equivalent e1 e2 =
 beta_normalization.without: [a] -> [a] -> [a]
 beta_normalization.without l r = List.filter (x -> not(elem x r)) l
 
-beta_normalization.betaNormalize: Expression -> Expression
+beta_normalization.betaNormalize: Expression ->{} Expression
 beta_normalization.betaNormalize e =
   normalized = match e with
     Constant c -> Constant c
@@ -248,8 +248,8 @@ beta_normalization.betaNormalizeApplication f a =
 
   (Builtin NaturalIsZero, _, NaturalLiteral n) -> if n === zero then Builtin True else Builtin False
 
-  (Builtin NaturalEven, _, NaturalLiteral m) -> if mod m (one+one) === (Some zero) then Builtin True else Builtin False
-  (Builtin NaturalOdd, _, NaturalLiteral m) -> if mod m (one+one) === (Some one) then Builtin True else Builtin False
+  (Builtin NaturalEven, _, NaturalLiteral m) -> if maybeMod m (one+one) === (Some zero) then Builtin True else Builtin False
+  (Builtin NaturalOdd, _, NaturalLiteral m) -> if maybeMod m (one+one) === (Some one) then Builtin True else Builtin False
   (Builtin NaturalToInteger, _, NaturalLiteral m) -> IntegerLiteral (Integer.positive m)
   (Builtin NaturalShow, _, NaturalLiteral n) -> Expression.TextLiteral (Chunks [] (Natural.toDecimalText n))
   (Application (Builtin NaturalSubtract) a, _, NaturalLiteral n) -> match betaNormalize a with
@@ -312,7 +312,7 @@ beta_normalization.betaNormalizeApplication f a =
             B
         )
         g, b0, _) ->
-          rest = match List.nonempty as with
+          rest = match List.mayNonempty as with
             Optional.Some nel -> NonEmptyList nel
             None -> EmptyList A0
           betaNormalize

@@ -24,7 +24,6 @@ support.encodeFloat f =
   unbiasedExponent = Nat.shiftRight (Nat.shiftLeft doubleRepresentation 1) 53
   fractionBits = Nat.shiftRight (Nat.shiftLeft doubleRepresentation 12) 12
   -- special cases
-  -- Debug.watch ("Exponent: " ++ (Nat.toText unbiasedExponent) ++ "\nFractionBits: " ++ (Nat.toText fractionBits)) match (unbiasedExponent, fractionBits) with
   match (unbiasedExponent, fractionBits) with
     (0, 0) -> -- signed null => HALF
       Bytes.encodeNat16be (Nat.shiftLeft sign 15)
@@ -35,8 +34,7 @@ support.encodeFloat f =
     (0x7ff, _) -> -- NaN => Half
       Bytes.encodeNat16be (0x7e00)
     (_, _) ->
-      exponent = unbiasedExponent - 1023
-      -- Debug.watch ("Exponent: " ++ (Int.toText exponent) ++ "\nFractionBits: " ++ (Nat.toText fractionBits))
+      exponent = (Nat.toInt unbiasedExponent) - (+1023)
       if ((exponent Int.>= -14) && (exponent Int.<= +15) && ((Nat.shiftLeft (Nat.shiftRight fractionBits 42) 42) == fractionBits))
         then -- fits in HALF
           halfUnbiasedExponent = Int.truncate0 (exponent + +15)
@@ -50,9 +48,10 @@ support.encodeFloat f =
           else
             Bytes.encodeNat64be doubleRepresentation
 
-support.infinity = Float.fromRepresentation 0x7FF0000000000000
-support.negInfinity = Float.fromRepresentation 0xFFF0000000000000
-support.nan = Float.fromRepresentation 0x7FF0000000000001
+
+support.infinity = Float.Infinity
+support.negInfinity = Float.NegativeInfinity
+support.nan = NaN
 
 -- --  2 bytes -> half float
 support.parseHalfFloat : Bytes -> Optional Float
@@ -68,17 +67,17 @@ support.parseHalfFloat bytes =
       (0, _) -> -- subnormals => Double
         match findFractionExponentHalf fractionBits with
           (fraction, expD) ->
-            exp = Int.truncate0 (1009 - expD)
+            exp = 1009 - expD
             Float.fromRepresentation ((Nat.shiftLeft sign 63) + (Nat.shiftLeft exp 52) + (Nat.shiftLeft fraction 42))
       (0x1f, 0) -> -- signed infinity
         if sign == 1 then negInfinity else infinity
-      (0x7ff, _) -> -- NaN => Half
+      (0x1f, _) -> -- NaN => Half
         nan
       (_, _) ->
         doubleUnbiasedExponent = Nat.shiftLeft (unbiasedExponent + 1008) 52 -- 1008 = (- 15 + 1023)
         doubleFractionBits = Nat.shiftLeft fractionBits 42
         Float.fromRepresentation ((Nat.shiftLeft sign 63) + doubleUnbiasedExponent + doubleFractionBits)
-  Optional.map (decodeNat . Tuple.at1) (Bytes.decodeNat16be bytes)
+  Optional.map (compose decodeNat Tuple.at1) (Bytes.decodeNat16be bytes)
 
 --  4 bytes -> (single) float
 support.parseSingleFloat : Bytes -> Optional Float
@@ -94,22 +93,22 @@ support.parseSingleFloat bytes =
       (0, _) -> -- subnormals => Double
         match findFractionExponentSingle fractionBits with
           (fraction, expD) ->
-            exp = Int.truncate0 (897 - expD)
+            exp = 897 - expD
             Float.fromRepresentation ((Nat.shiftLeft sign 63) + (Nat.shiftLeft exp 52) + (Nat.shiftLeft fraction 29))
       (0x1f, 0) -> -- signed infinity
         if sign == 1 then negInfinity else infinity
-      (0x7ff, _) -> -- NaN
+      (0x3ff, _) -> -- NaN
         nan
       (_, _) ->
         doubleUnbiasedExponent = Nat.shiftLeft (unbiasedExponent + 896) 52  -- 896 = (- 127 + 1023)
         doubleFractionBits = Nat.shiftLeft fractionBits 29
         Float.fromRepresentation ((Nat.shiftLeft sign 63) + doubleUnbiasedExponent + doubleFractionBits)
-  Optional.map (decodeNat . Tuple.at1) (Bytes.decodeNat32be bytes)
+  Optional.map (compose decodeNat Tuple.at1) (Bytes.decodeNat32be bytes)
 
 
 support.parseFloat : Bytes -> Optional Float
 support.parseFloat bytes = match Bytes.size bytes with
-  8 ->  Optional.map (Float.fromRepresentation . Tuple.at1) (Bytes.decodeNat64be bytes)
+  8 ->  Optional.map (compose Float.fromRepresentation Tuple.at1) (Bytes.decodeNat64be bytes)
   4 ->  parseSingleFloat bytes
   2 ->  parseHalfFloat bytes
   _ -> None
@@ -149,6 +148,7 @@ support.stableEncoding n =
 test> support.parseFloat.test.props1 =
   runs 1000 '(expect (!gen.nat |> stableEncoding))
 test> support.parseFloat.test.ex2 = check (stableEncoding 0xbfc01000)
+test> support.parseFloat.test.ex3 = check (stableEncoding 18446744073709551615)
 
 support.Integer.positive : Natural -> Integer
 support.Integer.positive n = Integer false n
@@ -191,7 +191,7 @@ support.naturalToFloat = cases
         f = match naturalToNat (internal.Natural last2) with
           Some x -> Nat.toFloat x
         -- f
-        f * Float.pow 2.0 (Nat.toFloat (32 * (Int.truncate0 (nz - 2))))
+        f * Float.pow 2.0 (Nat.toFloat (32 * (nz - 2)))
 
 support.naturalToNat : Natural -> Optional Nat
 support.naturalToNat n = match digits n with

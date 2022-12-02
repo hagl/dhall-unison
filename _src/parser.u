@@ -1,7 +1,7 @@
-use .external.stew.parser Parser ErrorFancy
-use .external.stew.parser.Parser <*
-use .external.stew.parser.Parser.ascii char
-use parser.util string
+use lib.uniparsec Parser ErrorFancy
+use lib.uniparsec.Parser <* string oneOf
+use lib.uniparsec.Parser.ascii char
+-- use parser.util string
 use syntax TextLiteral
 use syntax.TextLiteral Chunks
 use syntax.Constant
@@ -18,11 +18,11 @@ use syntax.ImportType Path Missing Remote Env
 
 use Optional
 
-parser.util.string : Text -> Parser e Char Text
-parser.util.string t =
-  x : Parser e Char [Char]
-  x = util.tokens (a b -> a === b) (toCharList t)
-  x $> fromCharList
+-- parser.util.string : Text -> Parser e Char Text
+-- parser.util.string t =
+--   x : Parser e Char [Char]
+--   x = util.tokens (a b -> a === b) (toCharList t)
+--   x $> fromCharList
 
 (parser.combinators.>>=) : Parser e t a -> (a -> Parser e t b) -> Parser e t b
 (parser.combinators.>>=) x y = Parser.flatMap y x
@@ -36,14 +36,14 @@ parser.util.string t =
 parser.combinators.sepBy1 : Parser e t b -> Parser e t a -> Parser e t (List.Nonempty b)
 parser.combinators.sepBy1 pa ps =
   go a =
-    Parser.map (as -> Nonempty a as) (some (ps *> pa))
+    Parser.map (as -> Nonempty a as) (many0 (ps *> pa))
   Parser.flatMap go pa
 
 parser.combinators.takeWhile : (Char -> Boolean) -> Parser e Char Text
-parser.combinators.takeWhile predicate = Parser.some (satisfy predicate) $> Text.fromCharList
+parser.combinators.takeWhile predicate = Parser.many0 (satisfy predicate) $> Text.fromCharList
 
 parser.combinators.takeWhile1 : (Char -> Boolean) -> Parser e Char Text
-parser.combinators.takeWhile1 predicate = Parser.many (satisfy predicate) $> Text.fromCharList
+parser.combinators.takeWhile1 predicate = Parser.many1 (satisfy predicate) $> Text.fromCharList
 
 parser.combinators.peek : Parser e Char (Optional Char)
 parser.combinators.peek =
@@ -143,14 +143,14 @@ parser.tokens.hexChar = Parser.token (c -> if Char.ascii.isHexDigit c then Some 
 parser.backtickLabel : Parser e Char Text
 parser.backtickLabel =
   predicate c = (Char.inRange ?\s ?_ c) || (Char.inRange ?a ?~ c)
-  parser = (char ?`) *> (Parser.some (satisfy predicate) $> Text.fromCharList) <* (char ?`)
+  parser = (char ?`) *> (Parser.many0 (satisfy predicate) $> Text.fromCharList) <* (char ?`)
   Parser.label parser "label in backticks"
 
 parser.simpleLabel : Boolean -> Parser e Char Text
 parser.simpleLabel allowReserved =
     restricted = if allowReserved then reservedKeywords else reservedIdentifiers
     (satisfy headCharacter
-      >>= (h -> Parser.some (satisfy tailCharacter) $> (t -> Text.fromCharList (h +: t))))
+      >>= (h -> Parser.many0 (satisfy tailCharacter) $> (t -> Text.fromCharList (h +: t))))
       >>= (label -> if (Set.contains label restricted)
         then getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ label ++ "' is a reserved word")))))
         else Parser.const label)
@@ -186,16 +186,16 @@ parser.tailCharacter : Char -> Boolean
 parser.tailCharacter c = isAlphaNum c || (c == ?_) || (c == ?-) || (c == ?/)
 
 parser.whitespace : Parser e Char ()
-parser.whitespace = (some whitespaceChunk) $> '()
+parser.whitespace = (many0 whitespaceChunk) $> '()
 
 parser.nonemptyWhitespace : Parser e Char ()
-parser.nonemptyWhitespace = (many whitespaceChunk) $> '()
+parser.nonemptyWhitespace = (many1 whitespaceChunk) $> '()
 
 parser.whitespaceChunk : Parser e Char ()
 parser.whitespaceChunk =
   predicate c = if c == ?\s || (c == ?\t) || (c == ?\n) then Some () else None
   Parser.label (oneOf
-    [ many (Tokens.token predicate) $> '()
+    [ many1 (Tokens.token predicate) $> '()
     , Parser.label (string "\r\n") "newline" $> '()
     , lineComment $> '()
     , blockComment $> '()
@@ -203,13 +203,17 @@ parser.whitespaceChunk =
 
 parser.charInRange : Nat -> Nat -> Parser e Char Char
 parser.charInRange from to =
-  predicate c = if Char.inRange (Char.fromNat from) (Char.fromNat to) c then Some c else None
+  predicate = match (Char.fromNat from, Char.fromNat to) with
+    (Some f, Some t) -> (c -> if Char.inRange f t c then Some c else None)
+    _ -> (c -> None)
   Tokens.token predicate
 
 parser.lineCommentPrefix : Parser e Char Text
 parser.lineCommentPrefix =
-    predicate c = if (Char.inRange ?\s (Char.fromNat 0x0010FFFF) c || (c == ?\t)) then Some c else None
-    (string "--") Parser.*> (Parser.some (Tokens.token predicate)) $> (comment -> "--" ++ (Text.fromCharList comment))
+    predicate = match (Char.fromNat 0x0010FFFF) with
+      Some limit -> (c -> if (Char.inRange ?\s limit c || (c == ?\t)) then Some c else None)
+      _ -> (c -> None)
+    (string "--") Parser.*> (Parser.many0 (Tokens.token predicate)) $> (comment -> "--" ++ (Text.fromCharList comment))
 
 parser.lineComment : Parser e Char Text
 parser.lineComment = (lineCommentPrefix <* eol)
@@ -222,15 +226,18 @@ parser.blockCommentLevel = '(string "{-" >>= (s -> blockCommentContinue ()) $> (
 
 parser.blockCommentChunk : 'Parser e Char Text
 parser.blockCommentChunk _ =
-  characters = Parser.many (
-    Tokens.token (c -> if ((Char.inRange ?\s (Char.fromNat 0x0010FFFF) c && (not (c == ?-)) && (not (c == ?{))) || (c == ?\n) || (c == ?\t) ) then Some c else None)    ) $> Text.fromCharList
-  character =Tokens.token (c -> if Char.inRange ?\s (Char.fromNat 0x0010FFFF) c || (c == ?\n) || (c == ?\t) then Some c else None) $> Char.toText
-  oneOf
-    [ (blockCommentLevel ())
-    , characters
-    , character
-    , eol
-    ]
+  match (Char.fromNat 0x0010FFFF) with
+    Some limit ->
+      characters = Parser.many1 (
+        Tokens.token (c -> if ((Char.inRange ?\s limit c && (not (c == ?-)) && (not (c == ?{))) || (c == ?\n) || (c == ?\t) ) then Some c else None)    ) $> Text.fromCharList
+      character =Tokens.token (c -> if Char.inRange ?\s limit c || (c == ?\n) || (c == ?\t) then Some c else None) $> Char.toText
+      oneOf
+        [ (blockCommentLevel ())
+        , characters
+        , character
+        , eol
+        ]
+    _ -> Parser.fail (TrivialError unknown None (Set.singleton (Label "Can't convert 0x0010FFFF to char")))
 
 parser.blockCommentContinue : 'Parser e Char Text
 parser.blockCommentContinue _ =
@@ -240,8 +247,11 @@ parser.blockCommentContinue _ =
 
 parser.shebang : Parser e Char Text
 parser.shebang =
-  predicate c = Char.inRange ?\s  (Char.fromNat 0x10FFFF) c || (c == ?\t)
-  string "#!" *> (takeWhile predicate) <* eol
+  match (Char.fromNat 0x10FFFF) with
+    Some limit ->
+      predicate c = Char.inRange ?\s limit c || (c == ?\t)
+      string "#!" *> (takeWhile predicate) <* eol
+    _ -> Parser.fail (TrivialError unknown None (Set.singleton (Label "Can't convert 0x10FFFF to char")))
 
 parser.parseText : Parser Void Char r -> Text -> Either Text r
 parser.parseText parser text =
@@ -251,14 +261,14 @@ parser.exponent : Parser e Char Text
 parser.exponent =
   (eq ?e)
     +:> (Parser.optional((Parser.or plus minus) $> Char.toText) $> Optional.getOrElse "")
-    ++> (many digit $> Text.fromCharList)
+    ++> (many1 digit $> Text.fromCharList)
 
 parser.numericDoubleLiteral : Parser e Char Text
 parser.numericDoubleLiteral =
   Parser.optional((Parser.or (plus  $> (const "")) (minus $> Char.toText))) $> Optional.getOrElse ""
-    ++> (many digit $> Text.fromCharList)
+    ++> (many1 digit $> Text.fromCharList)
     ++> (or
-      ((eq ?.) +:> (many digit $> Text.fromCharList)
+      ((eq ?.) +:> (many1 digit $> Text.fromCharList)
         ++> ((Parser.optional exponent) $> (Optional.getOrElse "")))
       exponent)
 
@@ -290,12 +300,12 @@ test> parser.doubleLiteral.tests.ex5 = check (parseText parser.doubleLiteral "Na
 
 parser.naturalLiteral : Parser e Char Natural
 parser.naturalLiteral = oneOf [
-    (string "0x" *> (many hexChar) $> Text.fromCharList
-      >>= (s -> match (Natural.parse s 16) with
+    (string "0x" *> (many1 hexChar) $> Text.fromCharList
+      >>= (s -> match (Natural.parse 16 s) with
         None -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' cannot be parsed as hex literal"))))))
         Optional.Some n -> Parser.const n))
-  , (charInRange (Char.toNat ?1) (Char.toNat ?9) +:> (some (Parser.token (c -> if Char.ascii.isDigit c then Some c else None)) $> Text.fromCharList)
-      >>= (s -> match (Natural.parse s 10) with
+  , (charInRange (Char.toNat ?1) (Char.toNat ?9) +:> (many0 (Parser.token (c -> if Char.ascii.isDigit c then Some c else None)) $> Text.fromCharList)
+      >>= (s -> match (Natural.parse 10 s) with
         None -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' cannot be parsed as natural literal"))))))
         Optional.Some n -> Parser.const n))
   , string "0" $> (const zero)
@@ -303,7 +313,7 @@ parser.naturalLiteral = oneOf [
 
 test> parser.naturalLiteral.test.ex1 = check (parseText parser.naturalLiteral "0x0" === Right zero)
 test> parser.naturalLiteral.test.ex2 = check (parseText parser.naturalLiteral "12345" === Right (Natural.fromNat 12345))
-test> parser.naturalLiteral.test.ex3 = check (parseText parser.naturalLiteral "12345678901234567890" |> Either.right === Natural.parse "12345678901234567890" 10)
+test> parser.naturalLiteral.test.ex3 = check (parseText parser.naturalLiteral "12345678901234567890" |> Either.right === Natural.parse 10 "12345678901234567890" )
 test> parser.naturalLiteral.test.ex4= check (parseText parser.naturalLiteral "+1" |> Either.isLeft)
 test> parser.naturalLiteral.test.ex5= check (parseText parser.naturalLiteral "-1" |> Either.isLeft)
 test> parser.naturalLiteral.test.ex6= check (parseText (parser.naturalLiteral <* eof) "1F3A" |> Either.isLeft)
@@ -367,9 +377,11 @@ parser.doubleQuoteChar = oneOf [
   ]
 
 parser.validCodePoint : Text -> Parser e Char Char
-parser.validCodePoint s = match Optional.flatMap Natural.toNat (Natural.parse (s) 16) with
+parser.validCodePoint s = match Optional.flatMap Natural.toMaybeNat (Natural.parse 16 s) with
   Optional.Some n -> if (validUnicodeCodePoint n)
-    then Parser.const (Char.fromNat n)
+    then match (Char.fromNat n) with
+      Some c -> Parser.const c
+      _ -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' can't be converted to char"))))))
     else (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' is not a valid unicode codepoint"))))))
   None -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("'" ++ s ++ "' cannot be parsed as unicode escape"))))))
 
@@ -378,7 +390,7 @@ parser.unbracedEscape = (hexChar ^ hexChar ^ hexChar ^ hexChar) >>= cases (((a ,
     validCodePoint (Text.fromCharList [a, b, c, d])
 
 parser.bracedEscape : Parser e Char Char
-parser.bracedEscape = (many hexChar) >>= cases chars ->
+parser.bracedEscape = (many1 hexChar) >>= cases chars ->
     validCodePoint (Text.fromCharList chars)
 
 parser.unicodeEscape : Parser e Char Char
@@ -462,9 +474,18 @@ parser.operatorParsers =
     , notEqual <* whitespace $> '(a b -> Operator a NotEqual b)
     ]
 
+-- parser.hash : Parser e Char syntax.SHA256Digest
+-- parser.hash = ((string "sha256:") *> (many1 (hexChar ^ hexChar))) $> List.map (cases (a,b) -> Optional.flatMap Natural.toMaybeNat (Natural.parse 16 (fromCharList [a, b])))>>= (
+--       nats ->
+--         if (List.all Optional.isSome nats) && (List.size nats == 32)
+--         then (match catch '(Bytes.fromList (List.somes nats)) with
+--           Right bs -> Parser.const (syntax.SHA256Digest.SHA256Digest bs)
+--           _ -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("Can't convert to hex digits")))))))
+--         else (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("Hash must consist of 64 hex digits")))))))
+
 parser.hash : Parser e Char syntax.SHA256Digest
-parser.hash = ((string "sha256:") *> (many (hexChar ^ hexChar))) $> List.map (cases (a,b) -> Optional.flatMap Natural.toNat (Natural.parse (fromCharList [a, b]) 16))>>= (
-      nats -> if (List.all Optional.isSome nats) && (List.size nats == 32) then Parser.const (syntax.SHA256Digest.SHA256Digest (Bytes.fromList (List.somes nats)))
+parser.hash = ((string "sha256:") *> (many1 (hexChar ^ hexChar))) $> List.map (cases (a,b) -> Optional.flatMap Natural.toMaybeNat (Natural.parse 16 (fromCharList [a, b])))>>= (
+      nats -> if (List.all Optional.isSome nats) && (List.size nats == 32) then Parser.const (syntax.SHA256Digest.SHA256Digest (Bytes.fromList.impl (List.somes nats)))
         else (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("Hash must consist of 64 hex digits")))))))
 
 -- ; Printable characters other than " ()[]{}<>/\,"
@@ -497,16 +518,16 @@ parser.quotedPathCharacter =
 
 
 parser.unquotedPathComponent : Parser e Char Text
-parser.unquotedPathComponent = (many parser.pathCharacter) $> Text.fromCharList
+parser.unquotedPathComponent = (many1 parser.pathCharacter) $> Text.fromCharList
 
 parser.quotedPathComponent : Parser e Char Text
-parser.quotedPathComponent = (many parser.quotedPathCharacter) $> Text.fromCharList
+parser.quotedPathComponent = (many1 parser.quotedPathCharacter) $> Text.fromCharList
 
 parser.pathComponent : Parser e Char Text
 parser.pathComponent = (char ?/) *> (or unquotedPathComponent ((char ?" *> quotedPathComponent <* (char ?"))))
 
 parser.path : Parser e Char syntax.File
-parser.path = (many pathComponent) >>= (l -> match List.nonempty l with
+parser.path = (many1 pathComponent) >>= (l -> match List.mayNonempty l with
   Some nel -> Parser.const (syntax.File.File (List.reverse (Nonempty.init nel)) (Nonempty.last nel))
   None  -> (getLocation >>= (loc -> Parser.fail (FancyError loc (Set.singleton (ErrorFail ("Path must have at lease one component")))))))
 
@@ -527,10 +548,10 @@ parser.local = Parser.oneOf [
 ]
 
 parser.bashEnvironmentVariable : Parser e Char Text
-parser.bashEnvironmentVariable = (or (char ?_ ) ascii.letter) ^ (some  (or (char ?_ ) ascii.alphanum)) $> cases (c, cl) -> Text.fromCharList (c +: cl)
+parser.bashEnvironmentVariable = (or (char ?_ ) ascii.letter) ^ (many0  (or (char ?_ ) ascii.alphanum)) $> cases (c, cl) -> Text.fromCharList (c +: cl)
 
 parser.posixEnvironmentVariable : Parser e Char Text
-parser.posixEnvironmentVariable = (many parser.posixEnvironmentChar) $> (cl -> Text.fromCharList cl)
+parser.posixEnvironmentVariable = (many1 parser.posixEnvironmentChar) $> (cl -> Text.fromCharList cl)
 
 parser.posixEnvironmentChar : Parser e Char Char
 parser.posixEnvironmentChar = oneOf [
@@ -567,7 +588,7 @@ parser.userinfoChars = Parser.map Char.toText (oneOf [
 ])
 
 parser.userinfo : Parser e Char Text
-parser.userinfo = Parser.map (Text.join "") (many (oneOf [
+parser.userinfo = Parser.map (Text.join "") (many1 (oneOf [
   parser.userinfoChars,
   pctEncoded
 ]))
@@ -587,7 +608,7 @@ parser.IPv4address = decOctet ^ ((char ?.) *> decOctet) ^ ((char ?.) *> decOctet
   (((a,b), c), d) -> Text.join "." [a,b,c,d]
 
 
-parser.IPvFuture = (char ?v) *> (many hexChar) ^ ((char ?.) *> (many (oneOf [unreserved, subDelims, (char ?:)))) $> cases
+parser.IPvFuture = (char ?v) *> (many1 hexChar) ^ ((char ?.) *> (many1 (oneOf [unreserved, subDelims, (char ?:)))) $> cases
   (v, w) -> Text.fromCharList (?. +: v ++ (?. +: w))
 
 parser.h16 : Parser e Char Text
@@ -604,7 +625,7 @@ parser.utils.repeat : Nat -> Parser e Char a -> Parser e Char [a]
 parser.utils.repeat n p =
   go = cases
     0 -> Parser.const []
-    n -> p >>= ( x -> Parser.map ((List.+:) x) (go (Nat.drop n 1)))
+    n -> p >>= ( x -> Parser.map ((List.+:) x) (go (n - 1)))
   go n
 
 test> parser.utils.repeat.tests.ex1 = check (parseText (repeat 3 (char ?x)) "xxx" === Right [?x, ?x, ?x])
@@ -613,16 +634,15 @@ parser.utils.repeatMinMax : Nat -> Nat -> Parser e Char a -> Parser e Char [a]
 parser.utils.repeatMinMax min max p =
   go = cases
     (0, _) -> Parser.const []
-    (n, 0) -> (Parser.or (p >>= ( x -> (Parser.map ((List.+:) x) (go (Nat.drop n 1, 0))))) (Parser.const []))
-    (n, m) -> p >>= ( x -> Parser.map ((List.+:) x) (go (Nat.drop n 1, Nat.drop m 1)))
+    (n, 0) -> (Parser.or (p >>= ( x -> (Parser.map ((List.+:) x) (go (n - 1, 0))))) (Parser.const []))
+    (n, m) -> p >>= ( x -> Parser.map ((List.+:) x) (go (n - 1, m - 1)))
   go (max, min)
 
 
 test> parser.utils.repeatMinMax.tests.ex1 = check (parseText (repeatMinMax 1 3 (char ?x)) "xxx" === Right [?x, ?x, ?x])
 test> parser.utils.repeatMinMax.tests.ex2 = check (parseText (repeatMinMax 1 4 (char ?x)) "xxx" === Right [?x, ?x, ?x])
-test> parser.utils.repeatMinMax.tests.ex3 = check (parseText (repeatMinMax 1 4 (char ?x)) "xxxxx" === Right [?x, ?x, ?x, ?x])
+test> parser.utils.repeatMinMax.tests.ex3 = check (parseText (repeatMinMax 1 4 (char ?x)) "xxxx" === Right [?x, ?x, ?x, ?x])
 test> parser.utils.repeatMinMax.tests.ex4 = check (isLeft (parseText (repeatMinMax 4 5 (char ?x)) "xxx"))
-
 
 -- ; NOTE: Backtrack when parsing each alternative
 parser.IPv6address : Parser e Char Text
@@ -671,23 +691,23 @@ parser.host = oneOf [
 ]
 
 parser.domain : Parser e Char Text
-parser.domain = domainlabel ^ some ((char ?.) *> domainlabel) ^ (optional (char ?.)) $> (cases ((h, t), s) -> (Text.join "." (h +: t)) ++ (Optional.fold (_ -> "") (_ -> ".") s))
+parser.domain = domainlabel ^ many0 ((char ?.) *> domainlabel) ^ (optional (char ?.)) $> (cases ((h, t), s) -> (Text.join "." (h +: t)) ++ (Optional.fold (_ -> "") (_ -> ".") s))
 
 parser.domainlabel : Parser e Char Text
-parser.domainlabel = ((many ascii.alphanum) ^ (some ((many (char ?-) ^ (many ascii.alphanum)) $> cases (a,b) -> a ++ b))) $> cases (a,b) -> Text.fromCharList (List.flatMap id (a +: b))
+parser.domainlabel = ((many1 ascii.alphanum) ^ (many0 ((many1 (char ?-) ^ (many1 ascii.alphanum)) $> cases (a,b) -> a ++ b))) $> cases (a,b) -> Text.fromCharList (List.flatMap id (a +: b))
 -- domainlabel = 1*ALPHANUM *(1*"-" 1*ALPHANUM)
 
 
 parser.port : Parser e Char Text
-parser.port = many ascii.digit $> Text.fromCharList
+parser.port = many1 ascii.digit $> Text.fromCharList
 
 parser.pathAbempty : Parser e Char File
-parser.pathAbempty = (some ((char ?/) *> parser.segment)) $> cases
+parser.pathAbempty = (many0 ((char ?/) *> parser.segment)) $> cases
   [] -> syntax.File.File [] ""
   (l :+ f) -> syntax.File.File (List.reverse l) f
 
 parser.segment : Parser e Char Text
-parser.segment = (some pChar) $> (Text.join "")
+parser.segment = (many0 pChar) $> (Text.join "")
 
 parser.unreserved : Parser e Char Char
 parser.unreserved = oneOf [
@@ -714,7 +734,7 @@ parser.subDelims = oneOf [
 ]
 
 parser.pCharCharacter : Parser e Char Text
-parser.pCharCharacter = Parser.map (Text.fromCharList . List.singleton) (oneOf [
+parser.pCharCharacter = Parser.map (compose Text.fromCharList List.singleton) (oneOf [
   parser.unreserved,
   parser.subDelims,
   (char ?:),
@@ -728,7 +748,7 @@ parser.pChar = oneOf [
 ]
 
 parser.query : Parser e Char Text
-parser.query = (some (oneOf [pChar,  (string "/"),  (string "?")])) $> (Text.join "")
+parser.query = (many0 (oneOf [pChar,  (string "/"),  (string "?")])) $> (Text.join "")
 
 
 parser.httpRaw : Parser e Char syntax.URL
@@ -736,7 +756,7 @@ parser.httpRaw = parser.scheme ^ ((string "://") *> authority) ^  pathAbempty ^ 
 
 parser.alternative5 : Parser e Char Expression -> (Parser e Char Expression)
 parser.alternative5 dExpression =
-  completeExpression = (some shebang) *> whitespace *> dExpression <* whitespace
+  completeExpression = (many0 shebang) *> whitespace *> dExpression <* whitespace
   interpolation = string "${" *> completeExpression <* string "}"
 
   singleQuoteContinue : TextLiteral -> Parser e Char TextLiteral
@@ -758,7 +778,7 @@ parser.alternative5 dExpression =
   ]
 
   doubleQuotedLiteral : Parser e Char TextLiteral
-  doubleQuotedLiteral = ((eq ?") .*> (some doubleQuoteChunk) <* (eq ?")) $> (List.foldLeft (TextLiteral.<>) (Chunks [] ""))
+  doubleQuotedLiteral = ((eq ?") .*> (many0 doubleQuoteChunk) <* (eq ?")) $> (List.foldLeft (TextLiteral.<>) (Chunks [] ""))
 
   textLiteral =
     Parser.label ((Parser.or doubleQuotedLiteral singleQuoteLiteral) $> Expression.TextLiteral) "literal"
@@ -774,14 +794,14 @@ parser.alternative5 dExpression =
     nonEmptyRecordType : Parser e Char Expression
     nonEmptyRecordType =
       entry = anyLabelOrSome <* (whitespace *> colon *> nonemptyWhitespace) ^ (dExpression <* whitespace)
-      (sepBy1 entry (comma *> whitespace)) <* (optional (whitespace *> comma)) <* whitespace $> (RecordType . Nonempty.toList)
+      (sepBy1 entry (comma *> whitespace)) <* (optional (whitespace *> comma)) <* whitespace $> (compose RecordType Nonempty.toList)
 
     nonEmptyRecordLiteral : Parser e Char Expression
     nonEmptyRecordLiteral =
       keysValue : Parser e Char (Text, Expression)
       keysValue =
         ((anyLabelOrSome <* whitespace) ^
-        (some (dot *> whitespace *> anyLabelOrSome <* whitespace)) ^
+        (many0 (dot *> whitespace *> anyLabelOrSome <* whitespace)) ^
         ((optional (equal *> whitespace *> dExpression)) <* whitespace)) >>= cases
           ((firstLabel, keys), Optional.Some expression) -> Parser.const (firstLabel, List.foldRight (k -> e -> RecordLiteral [(k, e)]) expression keys)
           ((firstLabel, []), None) -> Parser.const (firstLabel, Variable firstLabel 0)
@@ -789,9 +809,9 @@ parser.alternative5 dExpression =
       combineRecordTerms : Expression ->{} Expression ->{} Expression
       combineRecordTerms e1 e2 = Expression.Operator e2 Operator.CombineRecordTerms e1
       combineRecords : [(Text, Expression)] ->{} [(Text, Expression)]
-      combineRecords = Map.toList . (Map.fromListWith combineRecordTerms)
+      combineRecords = compose Map.toList (Map.fromListWith combineRecordTerms)
       (sepBy1 keysValue (comma *> whitespace)) <* (optional (whitespace *> comma)) <* whitespace $>
-        (RecordLiteral . combineRecords . Nonempty.toList)
+        (compose RecordLiteral (compose combineRecords Nonempty.toList))
 
     oneOf [
     , nonEmptyRecordType
@@ -809,7 +829,7 @@ parser.alternative5 dExpression =
     unionTypeEntry = (anyLabelOrSome <* whitespace) ^ (optional (colon *> nonemptyWhitespace *> dExpression <* whitespace))
     emptyUnionType = ((optional (bar *> whitespace)) *> closeAngle *> whitespace) $> '(UnionType [])
     nonEmptyUnionType =
-      (optional (bar *> whitespace)) *> (sepBy1 unionTypeEntry (bar *> whitespace)) <* ((optional (bar *> whitespace)) *> closeAngle) $> (UnionType . Nonempty.toList)
+      (optional (bar *> whitespace)) *> (sepBy1 unionTypeEntry (bar *> whitespace)) <* ((optional (bar *> whitespace)) *> closeAngle) $> (compose UnionType Nonempty.toList)
     Parser.label (openAngle *> whitespace *> (or nonEmptyUnionType emptyUnionType)) "literal"
 
   listLiteral : Parser e Char Expression
@@ -821,7 +841,7 @@ parser.alternative5 dExpression =
   identifier : Parser e Char Expression
   identifier = label ^ (optional (whitespace *> at *> whitespace *> naturalLiteral)) >>= cases
     (x, Optional.Some n) ->
-      match Natural.toNat n with
+      match Natural.toMaybeNat n with
         Some m -> Parser.const (Variable x m)
         None -> Parser.fail (TrivialError unknown None (Set.singleton (Label "natural De Bruijn indeces are not supported")))
     (x, None) -> Parser.const (Variable x 0)
@@ -912,7 +932,7 @@ parser.alternative5 dExpression =
     projectBySet xs e = ProjectByLabels e xs
     projectByExpression ex e = ProjectByType e ex
 
-    (primitiveExpression ^ (some (whitespace *> tokens.dot *> whitespace *> oneOf [
+    (primitiveExpression ^ (many0 (whitespace *> tokens.dot *> whitespace *> oneOf [
       , anyLabel $> field
       , labels $> projectBySet
       , recordType $> projectByExpression
@@ -971,7 +991,7 @@ parser.alternative5 dExpression =
     , Parser.const (id, None)
     ] >>= cases
       (f, maybeMessage) ->
-          importExpression ^ (some (nonemptyWhitespace *> importExpression)) $> cases
+          importExpression ^ (many0 (nonemptyWhitespace *> importExpression)) $> cases
         (a, bs) ->
           c = foldLeft Application (f a) bs
           info = match (maybeMessage, bs) with
@@ -992,7 +1012,7 @@ parser.alternative5 dExpression =
         )
     makeOperatorExpression firstSubExpression operatorParser subExpression =
       firstSubExpression ^
-        (some ((whitespace *> operatorParser) ^ subExpression $> cases (op, r0) -> (l -> op l r0))) $> cases
+        (many0 ((whitespace *> operatorParser) ^ subExpression $> cases (op, r0) -> (l -> op l r0))) $> cases
         (a, bs) -> List.foldLeft (x f -> f x) a bs
     List.foldRight cons nil operatorParsers
 
@@ -1002,7 +1022,7 @@ parser.alternative5 dExpression =
     alternative5A : Parser e Char Expression
     alternative5A = match a0Info with
       ImportExpr ->
-        many ((nonemptyWhitespace *> _with *> nonemptyWhitespace) *>
+        many1 ((nonemptyWhitespace *> _with *> nonemptyWhitespace) *>
         (sepBy1 anyLabel (whitespace *> dot *> whitespace)) <* (whitespace *> equal *> whitespace) ^
           parseOperatorExpression $> cases (keys, value) -> (e -> With e keys value)) $> (bs -> List.foldLeft (e -> f -> f e) a0 bs)
       _ -> Parser.fail (TrivialError unknown None (Set.empty))
@@ -1072,13 +1092,13 @@ parser.util.printErrorFancy = cases
   ErrorIndentation ord n1 n2 -> "Error indentation TODO"
   ErrorFail text -> text
 
-use base.io.Filepath Filepath
+use base.IO.Filepath Filepath
 parser.util.printLocation : Location -> Text
 parser.util.printLocation = cases
   Range fp lineStart colStart lineEnd colEnd ->  "TODO"
-  Location.Location fp (Line line) (Col col) -> (base.io.FilePath.toText fp) ++ ":(" ++ (Nat.toText line) ++ ", " ++ (Nat.toText col) ++ ")"
+  Location.Location fp (Line line) (Col col) -> (base.IO.FilePath.toText fp) ++ ":(" ++ (Nat.toText line) ++ ", " ++ (Nat.toText col) ++ ")"
 
-parser.completeExpression =  (some shebang) *> whitespace *> rootExpression <* whitespace <* (optional lineCommentPrefix)
+parser.completeExpression =  (many0 shebang) *> whitespace *> rootExpression <* whitespace <* (optional lineCommentPrefix)
 
 parser.twoDigits = ascii.digit +:> (ascii.digit +:> Parser.const "")
 
@@ -1099,7 +1119,7 @@ parser.timeMinutes = validTwoDigits "minutes" 0 59
 parser.timeSeconds = validTwoDigits "seconds" 0 59
 
 parser.timeSecfrac : Parser e Char Text
-parser.timeSecfrac = (eq ?.) *> (many digit $> Text.fromCharList)
+parser.timeSecfrac = (eq ?.) *> (many1 digit $> Text.fromCharList)
 
 parser.checkDate : Nat -> Nat -> Nat -> Boolean
 parser.checkDate y m d = match m with
