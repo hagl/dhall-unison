@@ -134,15 +134,19 @@ beta_normalization.betaNormalize e =
         RecordLiteral (List.sortBy Tuple.at1 (Map.toList (Map.unionWith 'id ml mr)))
       (ls1, rs1) -> if equivalent ls1 rs1 then ls1 else Operator ls1 Prefer rs1
     With e0 ks0 v0 -> match (ks0, betaNormalize e0) with
-      (Nonempty k [], RecordLiteral kvs) ->
+      (Nonempty (Label k) [], RecordLiteral kvs) ->
         RecordLiteral (Map.toList (Map.insert k (betaNormalize v0) (Map.fromList kvs)))
-      (Nonempty k0 (k1 +: ks1), RecordLiteral kvs) -> match lookup k0 kvs with
+      (Nonempty (Label k0) (k1 +: ks1), RecordLiteral kvs) -> match lookup k0 kvs with
         Optional.Some e1 ->
           e2 = betaNormalize (With e1 (k1 +| ks1) v0)
           RecordLiteral (Map.toList (Map.insert k0 e2 (Map.fromList kvs)))
         None ->
           e1 = betaNormalize (With (RecordLiteral[]) (k1 +| ks1) v0)
           RecordLiteral (Map.toList (Map.insert k0 e1 (Map.fromList kvs)))
+      (Nonempty DescendOptional _, Application (Builtin DhallNone) t) -> Application (Builtin DhallNone) t
+      (Nonempty DescendOptional [], DhallSome _) -> DhallSome (betaNormalize v0)
+      (Nonempty DescendOptional (k1 +: ks1), DhallSome e1) ->
+        DhallSome (betaNormalize (With e1 (k1 +| ks1) v0))
       (_, e1) -> With e1 ks0 (betaNormalize v0)
     Operator ls0 CombineRecordTypes rs0 -> match (betaNormalize ls0, betaNormalize rs0) with
       (RecordType [], rs1) -> rs1

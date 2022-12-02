@@ -121,7 +121,7 @@ parser.tokens.builtin : Text -> Parser e Char ()
 parser.tokens.builtin text = Parser.label (string text $> '())"builtin"
 
 parser.tokens.doubleEqual = (string "==") *> peek >>= cases
-    (Optional.Some ?=) -> Parser.fail (TrivialError unknown None (Set.singleton (Label "==")))
+    (Optional.Some ?=) -> Parser.fail (TrivialError unknown None (Set.singleton (ErrorItem.Label "==")))
     _ -> Parser.const ()
 
 test> parser.tokens.doubleEqual.tests.ex1 = check(parseText parser.tokens.doubleEqual "==" === (Right ()))
@@ -160,6 +160,9 @@ parser.label = Parser.label (Parser.or backtickLabel (simpleLabel false)) "label
 
 parser.anyLabel : Parser e Char Text
 parser.anyLabel = Parser.label (Parser.or backtickLabel (simpleLabel true)) "any label"
+
+parser.withPathComponent : Parser e Char PathComponent
+parser.withPathComponent = or (anyLabel $> Label) (string "?" $> 'DescendOptional)
 
 parser.nonreservedLabel : Parser e Char Text
 parser.nonreservedLabel = label
@@ -237,7 +240,7 @@ parser.blockCommentChunk _ =
         , character
         , eol
         ]
-    _ -> Parser.fail (TrivialError unknown None (Set.singleton (Label "Can't convert 0x0010FFFF to char")))
+    _ -> Parser.fail (TrivialError unknown None (Set.singleton (ErrorItem.Label "Can't convert 0x0010FFFF to char")))
 
 parser.blockCommentContinue : 'Parser e Char Text
 parser.blockCommentContinue _ =
@@ -251,7 +254,7 @@ parser.shebang =
     Some limit ->
       predicate c = Char.inRange ?\s limit c || (c == ?\t)
       string "#!" *> (takeWhile predicate) <* eol
-    _ -> Parser.fail (TrivialError unknown None (Set.singleton (Label "Can't convert 0x10FFFF to char")))
+    _ -> Parser.fail (TrivialError unknown None (Set.singleton (ErrorItem.Label "Can't convert 0x10FFFF to char")))
 
 parser.parseText : Parser Void Char r -> Text -> Either Text r
 parser.parseText parser text =
@@ -805,7 +808,7 @@ parser.alternative5 dExpression =
         ((optional (equal *> whitespace *> dExpression)) <* whitespace)) >>= cases
           ((firstLabel, keys), Optional.Some expression) -> Parser.const (firstLabel, List.foldRight (k -> e -> RecordLiteral [(k, e)]) expression keys)
           ((firstLabel, []), None) -> Parser.const (firstLabel, Variable firstLabel 0)
-          ((_, _), None) -> Parser.fail (TrivialError unknown None (Set.singleton (Label "punned entry cannot contain dots")))
+          ((_, _), None) -> Parser.fail (TrivialError unknown None (Set.singleton (ErrorItem.Label "punned entry cannot contain dots")))
       combineRecordTerms : Expression ->{} Expression ->{} Expression
       combineRecordTerms e1 e2 = Expression.Operator e2 Operator.CombineRecordTerms e1
       combineRecords : [(Text, Expression)] ->{} [(Text, Expression)]
@@ -843,7 +846,7 @@ parser.alternative5 dExpression =
     (x, Optional.Some n) ->
       match Natural.toMaybeNat n with
         Some m -> Parser.const (Variable x m)
-        None -> Parser.fail (TrivialError unknown None (Set.singleton (Label "natural De Bruijn indeces are not supported")))
+        None -> Parser.fail (TrivialError unknown None (Set.singleton (ErrorItem.Label "natural De Bruijn indeces are not supported")))
     (x, None) -> Parser.const (Variable x 0)
 
   builtinExpression : Parser e Char Expression
@@ -906,7 +909,7 @@ parser.alternative5 dExpression =
       Optional.Some ?F ->  (builtin "False") >>= '(Parser.const (Builtin False))
       Optional.Some ?K ->  (builtin "Kind") >>= '(Parser.const (Constant Kind))
 
-      _ -> Parser.fail (TrivialError unknown None (Set.singleton (Label "no builtin")))
+      _ -> Parser.fail (TrivialError unknown None (Set.singleton (ErrorItem.Label "no builtin")))
 
   parenExpression : Parser e Char Expression
   parenExpression = openParen *> whitespace *> dExpression <* (whitespace *> closeParen)
@@ -1023,8 +1026,9 @@ parser.alternative5 dExpression =
     alternative5A = match a0Info with
       ImportExpr ->
         many1 ((nonemptyWhitespace *> _with *> nonemptyWhitespace) *>
+        -- (sepBy1 withPathComponent (whitespace *> dot *> whitespace)) <* (whitespace *> equal *> whitespace) ^
         (sepBy1 anyLabel (whitespace *> dot *> whitespace)) <* (whitespace *> equal *> whitespace) ^
-          parseOperatorExpression $> cases (keys, value) -> (e -> With e keys value)) $> (bs -> List.foldLeft (e -> f -> f e) a0 bs)
+          parseOperatorExpression $> cases (keys, value) -> (e -> With e (Nonempty.map Label keys) value)) $> (bs -> List.foldLeft (e -> f -> f e) a0 bs)
       _ -> Parser.fail (TrivialError unknown None (Set.empty))
 
     alternative5B : Parser e Char Expression
@@ -1083,7 +1087,7 @@ parser.util.printError = cases
 
 parser.util.printErrorItem : ErrorItem Char -> Text
 parser.util.printErrorItem = cases
-  Label t -> "a " ++ t
+  ErrorItem.Label t -> "a " ++ t
   Tokens ts -> Text.fromCharList ts
   EndOfInput -> "<eof>"
 
