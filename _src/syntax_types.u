@@ -62,12 +62,12 @@ unique type syntax.Expression =
     --   > < k : T | ks… >
     --   > < k | ks… >
     UnionType [(Text, Optional syntax.Expression)]
+  | ShowConstructor syntax.Expression
   | Import syntax.ImportType syntax.ImportMode (Optional syntax.SHA256Digest)
   | -- | > Some s
     DhallSome syntax.Expression
   | Builtin syntax.Builtin
   | Constant syntax.Constant
-
 
 unique type syntax.TextLiteral = Chunks [(Text, syntax.Expression)] Text
 

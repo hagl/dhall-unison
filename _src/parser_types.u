@@ -1,0 +1,9 @@
+-- | 'ApplicationExprInfo' distinguishes certain subtypes of application
+-- expressions.
+unique type parser.ApplicationExprInfo
+    = NakedMergeOrSomeOrToMap
+    -- ^ @merge x y@, @Some x@ or @toMap x@, unparenthesized.
+    | ImportExpr
+    -- ^ An import expression.
+    | ApplicationExpr
+    -- ^ Any other application expression.

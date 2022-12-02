@@ -403,16 +403,6 @@ parser.doubleQuoteEscaped =
       _ -> None)
     (eq ?u *> unicodeEscape)
 
--- | 'ApplicationExprInfo' distinguishes certain subtypes of application
--- expressions.
-unique type parser.ApplicationExprInfo
-    = NakedMergeOrSomeOrToMap
-    -- ^ @merge x y@, @Some x@ or @toMap x@, unparenthesized.
-    | ImportExpr
-    -- ^ An import expression.
-    | ApplicationExpr
-    -- ^ Any other application expression.
-
 parser.alternative0 : Parser e Char Expression -> (Parser e Char Expression)
 parser.alternative0 dExpression =
   (lambda *> whitespace *> openParen *> whitespace *> label <* whitespace <* (char ?:) <* nonemptyWhitespace) ^
@@ -434,8 +424,8 @@ parser.alternative2 dExpression =
   letBinding =
     (string "let" *> nonemptyWhitespace *> nonreservedLabel <* whitespace) ^
     (Parser.optional (string ":" *> nonemptyWhitespace *> dExpression <* whitespace)) ^
-    (string "=" *> whitespace *> dExpression <* whitespace)
-  ((many letBinding) <* string "in" <* nonemptyWhitespace) ^ dExpression $> cases
+    (string "=" *> whitespace *> dExpression <* nonemptyWhitespace)
+  ((many1 letBinding) <* string "in" <* nonemptyWhitespace) ^ dExpression $> cases
     (ls, ex) ->
       List.foldRight (cases ((l, mT), e) -> ex -> Let l mT e ex) ex ls
 
@@ -977,6 +967,7 @@ parser.alternative5 dExpression =
       (string "merge" *> nonemptyWhitespace *> importExpression <* nonemptyWhitespace) $> (a -> (b -> Merge a b None, Some "second arg to 'merge'"))
     , (string "Some" *> nonemptyWhitespace) $> '(DhallSome, Some "argument to 'Some'")
     , (string "toMap" *> nonemptyWhitespace) $> '(a -> ToMap a None, Some "argument to 'toMap'")
+    , (string "showConstructor" *> nonemptyWhitespace) $> '(a -> ShowConstructor a, Some "argument to 'showConstructor'")
     , Parser.const (id, None)
     ] >>= cases
       (f, maybeMessage) ->

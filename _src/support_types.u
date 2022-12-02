@@ -1,0 +1,8 @@
+unique type support.Integer = Integer Boolean Natural
+
+-- YYYY-MM-DD
+unique type support.Date = Date Nat Nat Nat
+-- hh mm (ss*10^precision) precision
+unique type support.Time = Time Nat Nat Nat Nat
+--  timezone in minutes
+unique type support.TimeZone = TimeZone Int

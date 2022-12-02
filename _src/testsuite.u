@@ -414,7 +414,7 @@ testsuite.runTests path =
     '(io.setCurrentDirectory origDirectory)
     '(printTestStatus path (List.foldLeft updateResults (0,0) [
           -- runTestsRecursive  ("./dhall-lang/tests/parser/success") "A.dhall" parseSuccessTest,
-          -- runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
+          runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
           -- runTestsRecursive  ("./dhall-lang/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
           -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),

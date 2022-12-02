@@ -213,7 +213,9 @@ binary.encode expression =
         Env x -> [ TPosInt 6, TString x]
         Missing -> [ TPosInt 7 ]
       TList ([ TPosInt 24, hash1, importMode1 ] ++ importType1)
-binary.Term.toBytes: Term -> Bytes
+    ShowConstructor t0 -> TList [TPosInt 34, encode t0]
+
+binary.Term.toBytes: Term ->{} Bytes
 binary.Term.toBytes = cases
   TPosInt n -> majorTypeIntArg 0 n
   TNegInt n -> majorTypeIntArg 1 n
@@ -666,5 +668,9 @@ binary.decodeTerm t =
     TList [TPosInt 32, TBool positive, TPosInt absHour, TPosInt absMin] ->
       minutes = Nat.toInt (absHour * 60 + absMin)
       Right (TimeZoneLiteral (TimeZone.TimeZone (if positive then minutes else Int.negate minutes)))
+    TList [TPosInt 34, t] ->
+      match decode t with
+        l@(Left _) -> l
+        Right e -> Right (ShowConstructor e)
     _ -> Left ("Error decoding term")
   decode normalized

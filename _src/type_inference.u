@@ -23,8 +23,6 @@ type_inference.upperBound c1 c2 = match (c1, c2) with
   (_, Kind) -> Kind
   _  -> Type
 
-unique type type_inference.Context = Context [(Text, Expression)]
-
 type_inference.Context.empty : Context
 type_inference.Context.empty = Context []
 
@@ -465,6 +463,16 @@ type_inference.typeCheck = cases ctx -> cases
   -- general operators
   Operator e1 op e2 -> typeCheckOperator ctx e1 op e2
 
+  ShowConstructor e ->
+    et = typeCheck ctx e
+    msg = match et with
+      Left err -> err
+      Right t -> utils.printExpression t
+    Debug.watch msg match (typeCheck ctx e) with
+    Left err -> Left err
+    Right (UnionType _) -> Right (Builtin Text)
+    Right (Application (Builtin Optional) _) -> Right (Builtin Text)
+    _ -> Left "ShowConstructor not applied to Union"
   _ -> Left "TypeError: unknown"
 
 type_inference.recursivelyMergeRecords : Expression -> Expression -> Either Text Expression

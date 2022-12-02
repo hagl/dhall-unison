@@ -150,8 +150,6 @@ test> support.parseFloat.test.props1 =
   runs 1000 '(expect (!gen.nat |> stableEncoding))
 test> support.parseFloat.test.ex2 = check (stableEncoding 0xbfc01000)
 
-unique type support.Integer = Integer Boolean Natural
-
 support.Integer.positive : Natural -> Integer
 support.Integer.positive n = Integer false n
 
@@ -202,10 +200,3 @@ support.naturalToNat n = match digits n with
       use Nat +
       Some (a + Nat.shiftLeft b 32)
     _              -> None
-
--- YYYY-MM-DD
-unique type support.Date = Date Nat Nat Nat
--- hh mm (ss*10^precision) precision
-unique type support.Time = Time Nat Nat Nat Nat
---  timezone in minutes
-unique type support.TimeZone = TimeZone Int

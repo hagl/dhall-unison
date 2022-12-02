@@ -1,0 +1,11 @@
+unique type DhallValue =
+    DhallList [DhallValue]
+  | DhallBoolean Boolean
+  | DhallFloat Float
+  | DhallNatural Natural
+  | DhallInteger Integer
+  | DhallText Text
+  | DhallRecord (Map Text DhallValue)
+  | DhallOptional (Optional DhallValue)
+
+unique type README.example1.UserConfig = UserConfig Text Text Text

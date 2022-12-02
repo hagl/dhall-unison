@@ -51,6 +51,7 @@ shift.shift d x m =
     Builtin b ->  Builtin b
     Constant c -> Constant c
     Import importType importMode optDigest -> Import importType importMode optDigest
+    ShowConstructor t0 -> ShowConstructor (shift' t0)
 
 use test
 

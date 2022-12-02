@@ -117,6 +117,7 @@ syntax.reservedKeywords = (Set.fromList
   , "assert"
   , "forall"
   , "with"
+  , "showConstructor"
   ])
 
 -- | The set of reserved identifiers for the Dhall language
