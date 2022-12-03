@@ -7,6 +7,7 @@ use syntax.Operator Or Plus TextAppend ListAppend And CombineRecordTerms Prefer 
 use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
 use Optional
 use utils
+use List Nonempty
 
 type_inference.functionCheck : Constant -> Constant -> Constant
 type_inference.functionCheck c1 c2 = match (c1, c2) with
@@ -22,8 +23,6 @@ type_inference.upperBound c1 c2 = match (c1, c2) with
   (Kind, _) -> Kind
   (_, Kind) -> Kind
   _  -> Type
-
-unique type type_inference.Context = Context [(Text, Expression)]
 
 type_inference.Context.empty : Context
 type_inference.Context.empty = Context []
@@ -224,7 +223,7 @@ type_inference.typeCheck = cases ctx -> cases
             _ -> true) tts
           then
             Left "Not all types in the union are types"
-          else match List.find (cases (c, nel) -> Nonempty.size nel > 1) (Map.toList (List.groupBy Tuple.at1 tts)) with
+          else match List.find (cases (c, nel) -> List.Nonempty.size nel > 1) (Map.toList (List.groupBy Tuple.at1 tts)) with
             None -> Right (Constant (List.foldLeft (acc -> cases (_, Constant c) -> upperBound acc c) Type tts))
             Optional.Some (k, _) -> Left ("Duplicate key '" ++ k ++ "' in record type" )
       (h +: _) -> Left h
@@ -328,7 +327,7 @@ type_inference.typeCheck = cases ctx -> cases
 
   UnionType [] ->  Right (Constant Type)
   UnionType tExs ->
-    match List.find (cases (_, g) -> Nonempty.size g > 1) (Map.toList (List.groupBy Tuple.at1 tExs)) with
+    match List.find (cases (_, g) -> List.Nonempty.size g > 1) (Map.toList (List.groupBy Tuple.at1 tExs)) with
       Optional.Some (x, _) -> Left ("Union has more than one attribute with name '" ++ x ++ "'")
       None ->
         typed = List.filterMap (cases (a, ex) -> Optional.map (typeCheck ctx) ex) tExs
