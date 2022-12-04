@@ -987,6 +987,7 @@ parser.alternative5 dExpression =
       (string "merge" *> nonemptyWhitespace *> importExpression <* nonemptyWhitespace) $> (a -> (b -> Merge a b None, Some "second arg to 'merge'"))
     , (string "Some" *> nonemptyWhitespace) $> '(DhallSome, Some "argument to 'Some'")
     , (string "toMap" *> nonemptyWhitespace) $> '(a -> ToMap a None, Some "argument to 'toMap'")
+    , (string "showConstructor" *> nonemptyWhitespace) $> '(a -> ShowConstructor a, Some "argument to 'showConstructor'")
     , Parser.const (id, None)
     ] >>= cases
       (f, maybeMessage) ->

@@ -46,7 +46,7 @@ substitution.substitute e x' n e0 =
     Builtin b -> Expression.Builtin b
     Constant c -> Expression.Constant c
     Import importType importMode optDigest -> Import importType importMode optDigest
-
+    ShowConstructor t0 -> ShowConstructor (subst t0)
 
 use test
 

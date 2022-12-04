@@ -51,6 +51,7 @@ alpha_normalization.alphaNormalize = cases
   DateLiteral t -> DateLiteral t
   TimeLiteral t -> TimeLiteral t
   TimeZoneLiteral tz -> TimeZoneLiteral tz
+  ShowConstructor a0 -> ShowConstructor (alphaNormalize a0)
 use test
 
 test> alpha_normalization.alphaNormalize.tests.ex1 = check(alphaNormalize(
