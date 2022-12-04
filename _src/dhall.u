@@ -13,16 +13,6 @@ use syntax.Operator Or And Equal NotEqual Plus Times TextAppend ListAppend Combi
 use syntax.Builtin True False
 
 
-unique type DhallValue =
-    DhallList [DhallValue]
-  | DhallBoolean Boolean
-  | DhallFloat Float
-  | DhallNatural Natural
-  | DhallInteger Integer
-  | DhallText Text
-  | DhallRecord (Map Text DhallValue)
-  | DhallOptional (Optional DhallValue)
-
 DhallValue.printExpression =
   go prefix = cases
     DhallBoolean b -> if b then "true" else "false"
@@ -257,8 +247,6 @@ README.example1.input = Text.join "\n" [
   , "                                                                  "
   , "  in  configs                                                    "
   ]
-
-unique type README.example1.UserConfig = UserConfig Text Text Text
 
 README.example1.convertConfigs : DhallValue -> List UserConfig
 README.example1.convertConfigs = cases

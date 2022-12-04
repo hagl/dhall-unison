@@ -416,18 +416,18 @@ testsuite.runTests path =
     '(setCurrentDirectory (FilePath (path ++ "/..")))
     '(setCurrentDirectory origDirectory)
     '(printTestStatus path (List.foldLeft updateResults (0,0) [
-          -- runTestsRecursive  ("./dhall-lang/tests/parser/success") "A.dhall" parseSuccessTest,
-          -- runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
-          -- runTestsRecursive  ("./dhall-lang/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
-          -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
-          -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),
-          -- runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
+          runTestsRecursive  ("./dhall-lang/tests/parser/success") "A.dhall" parseSuccessTest,
+          runTestsRecursive  ("./dhall-lang/tests/parser/failure") ".dhall" parseFailureTest,
+          runTestsRecursive  ("./dhall-lang/tests/alpha-normalization") "A.dhall" alphaNormalizationTest,
+          withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
+          withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),
+          runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
           runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall"))),
-          -- runTestsRecursive  ("./dhall-lang/tests/import/failure") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
-          -- runTestsRecursive  ("./dhall-lang/tests/import/failure/unit/cors") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
-          -- withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest),
-          -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
-          -- runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,
+          runTestsRecursive  ("./dhall-lang/tests/import/failure") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          runTestsRecursive  ("./dhall-lang/tests/import/failure/unit/cors") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest),
+          runTestsRecursive  ("./dhall-lang/tests/binary-decode/success") "A.dhallb" binaryDecodeSuccessTest,
+          runTestsRecursive  ("./dhall-lang/tests/binary-decode/failure") ".dhallb" binaryDecodeFailureTest,
         ]))
   duration = !systemTimeMicroseconds - startTime
   printLine ("Duration: " ++ (durationToText duration))

@@ -19,7 +19,7 @@ use syntax.SHA256Digest SHA256Digest
 use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome Import
 use syntax.Constant Type Kind Sort
 use syntax.Builtin Optional Natural Integer Double Text List Date Time TimeZone NaturalBuild NaturalFold NaturalIsZero NaturalEven NaturalOdd NaturalToInteger NaturalShow NaturalSubtract IntegerToDouble IntegerShow IntegerNegate IntegerClamp DoubleShow ListBuild ListFold ListLength ListHead ListLast ListIndexed ListReverse TextShow TextReplace Bool True False
-use uniparsec.Parser oneOf
+use uniparsec.Parser oneOf ^ sepBy
 
 structural type import.ResolveErrorType = ImportError | UnrecoverableImportError| ParseError | TypeError
 structural type import.ResolveError = ResolveError import.ResolveErrorType Text

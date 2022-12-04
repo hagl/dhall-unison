@@ -1,5 +1,5 @@
 use lib.uniparsec Parser ErrorFancy
-use lib.uniparsec.Parser <* string oneOf
+use lib.uniparsec.Parser <* string oneOf ^
 use lib.uniparsec.Parser.ascii char
 -- use parser.util string
 use syntax TextLiteral
@@ -414,16 +414,6 @@ parser.doubleQuoteEscaped =
       ?t -> Some ?\t
       _ -> None)
     (eq ?u *> unicodeEscape)
-
--- | 'ApplicationExprInfo' distinguishes certain subtypes of application
--- expressions.
-unique type parser.ApplicationExprInfo
-    = NakedMergeOrSomeOrToMap
-    -- ^ @merge x y@, @Some x@ or @toMap x@, unparenthesized.
-    | ImportExpr
-    -- ^ An import expression.
-    | ApplicationExpr
-    -- ^ Any other application expression.
 
 parser.alternative0 : Parser e Char Expression -> (Parser e Char Expression)
 parser.alternative0 dExpression =

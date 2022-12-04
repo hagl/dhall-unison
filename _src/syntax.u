@@ -4,6 +4,7 @@ use syntax.TextLiteral Chunks
 use syntax.Constant
 use syntax Expression
 use syntax.Expression Lambda Forall Let Variable If Merge ToMap EmptyList NonEmptyList Annotation Operator Application Field ProjectByLabels ProjectByType Completion Assert With DoubleLiteral NaturalLiteral IntegerLiteral TextLiteral RecordType RecordLiteral UnionType DateLiteral TimeLiteral TimeZoneLiteral Operator Builtin Constant DhallSome
+use List Nonempty
 
 syntax.addTextToTextLiteral : Text -> TextLiteral -> TextLiteral
 syntax.addTextToTextLiteral t = cases (Chunks l x) -> Chunks l (x Text.++ t)
@@ -23,8 +24,8 @@ syntax.addExpresionToTextLiteral e = cases (Chunks l x) -> Chunks (l List.++ [(x
 syntax.splitOn : Char -> Text -> Nonempty Text
 syntax.splitOn needle haystack =
     match Text.split needle haystack with
-        []     -> Nonempty "" []
-        t +: ts -> Nonempty t ts
+        []     -> "" +| []
+        t +: ts -> t +| ts
 
 -- -- | Split `Chunks` by lines
 syntax.linesLiteral : TextLiteral -> Nonempty TextLiteral
@@ -38,7 +39,7 @@ syntax.linesLiteral = cases
       Nonempty (Chunks pairs1 suffix1) chunks ->
         List.foldRight
             Nonempty.cons
-            (Nonempty (Chunks ((lastLine, interpolation) +: pairs1) suffix1) chunks)
+            ((Chunks ((lastLine, interpolation) +: pairs1) suffix1) +| chunks)
             (List.map (t -> Chunks [] t) initLines)
 
 
