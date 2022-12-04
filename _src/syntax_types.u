@@ -40,7 +40,7 @@ unique type syntax.Expression =
   | -- | > assert : T
     Assert syntax.Expression
   | -- | > e with k.ks… = v
-    With syntax.Expression (Nonempty Text) syntax.Expression
+    With syntax.Expression (Nonempty syntax.PathComponent) syntax.Expression
   | -- | > n.n
     DoubleLiteral Float -- TODO
   | -- | > n
@@ -179,3 +179,7 @@ unique type syntax.ImportType
         -- ^ > env:x
 
 unique type syntax.SHA256Digest = SHA256Digest Bytes
+
+unique type syntax.PathComponent
+  = Label Text
+  | DescendOptional
