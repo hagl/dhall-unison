@@ -68,7 +68,7 @@ unique type syntax.Expression =
     DhallSome syntax.Expression
   | Builtin syntax.Builtin
   | Constant syntax.Constant
-
+  | ShowConstructor syntax.Expression
 
 unique type syntax.TextLiteral = Chunks [(Text, syntax.Expression)] Text
 

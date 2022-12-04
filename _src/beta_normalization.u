@@ -199,6 +199,11 @@ beta_normalization.betaNormalize e =
     Application f g ->
       betaNormalizeApplication f g
     DhallSome t0 -> DhallSome (betaNormalize t0)
+    ShowConstructor u0 -> match (betaNormalize u0) with
+      Application (Field (UnionType _xTs0) x) _a -> TextLiteral (Chunks [] x)
+      Field (UnionType _xTs0) x -> TextLiteral (Chunks [] x)
+      Application (Builtin DhallNone) _A -> TextLiteral (Chunks [] "None")
+      DhallSome t0 -> TextLiteral (Chunks [] "Some")
   normalized
 
 beta_normalization.betaNormalizeApplication : Expression -> Expression -> Expression

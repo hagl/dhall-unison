@@ -571,6 +571,7 @@ import.resolveExpression = cases
   TimeZoneLiteral tz -> TimeZoneLiteral tz
   Import (Remote url (Optional.Some headers)) im oDig -> import (Remote url (Optional.Some (resolveExpression headers))) im oDig
   Import it im oDig -> import it im oDig
+  ShowConstructor a0 -> ShowConstructor (resolveExpression a0)
 
 import.verifyAndResolve : Either ResolveError Text -> ImportType -> (Optional syntax.SHA256Digest) -> Map (ImportType, ImportMode) Expression -> [ImportType] -> Either ResolveError (Expression, Map (ImportType, ImportMode) Expression)
 import.verifyAndResolve loaded importType oDigest cache previous =

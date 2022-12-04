@@ -463,7 +463,16 @@ type_inference.typeCheck = cases ctx -> cases
         else Left ("Operands of === have different type")
   -- general operators
   Operator e1 op e2 -> typeCheckOperator ctx e1 op e2
-
+  ShowConstructor e ->
+    et = typeCheck ctx e
+    msg = match et with
+      Left err -> err
+      Right t -> utils.printExpression t
+    Debug.watch msg match (typeCheck ctx e) with
+    Left err -> Left err
+    Right (UnionType _) -> Right (Builtin Text)
+    Right (Application (Builtin Optional) _) -> Right (Builtin Text)
+    _ -> Left "ShowConstructor not applied to Union"
   _ -> Left "TypeError: unknown"
 
 type_inference.recursivelyMergeRecords : Expression -> Expression -> Either Text Expression
