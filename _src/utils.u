@@ -79,7 +79,7 @@ utils.printExpression = cases
   ProjectByType t0 T0 -> "(" ++ (printExpression t0) ++ ").(" ++ (printExpression T0) ++ ")"
   Completion T0 r0 -> (printExpression T0) ++ "::" ++ (printExpression r0)
   Assert T0 -> "assert : " ++ (printExpression T0)
-  With e0 ks v0 -> (printExpression e0) ++ (Text.join "." (Nonempty.toList ks)) ++ " = " ++ (printExpression v0)
+  With e0 ks v0 -> (printExpression e0) ++ " with " ++ (Text.join "." (List.map printPathComponent (Nonempty.toList ks))) ++ " = " ++ (printExpression v0)
   DoubleLiteral d -> Float.toText d
   NaturalLiteral n -> Natural.toDecimalText n
   IntegerLiteral n -> Integer.toText n
@@ -101,6 +101,11 @@ utils.printExpression = cases
       absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
       (if positive then "+" else "-") ++ (Nat.toText (absMin / 60)) ++ ":" ++ (Nat.toText (Nat.mod absMin 60))
   Import importType importMode optDigest -> (printImportType importType) ++ (printImportMode importMode) ++ (Optional.fold '("") (d -> " " ++ printDigest d) optDigest)
+
+utils.printPathComponent : PathComponent -> Text
+utils.printPathComponent = cases
+  Label t -> t
+  DescendOptional -> "?"
 
 utils.printDigest : SHA256Digest -> Text
 utils.printDigest = cases SHA256Digest bytes ->

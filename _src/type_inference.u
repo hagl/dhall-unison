@@ -279,7 +279,7 @@ type_inference.typeCheck = cases ctx -> cases
         Right t -> Left ("Trying to project by type to something that is not a type but " ++ (printExpression t))
     Right tp -> Left ("The projection by type is attempted on something that is not a record but of type " ++ (printExpression tp))
 
-  --     With syntax.Expression (Nonempty Text) syntax.Expression
+  --     With syntax.Expression (Nonempty PathComponent) syntax.Expression
   With expr ks v -> match typeCheck ctx expr with
     Left err -> Left err
     Right t -> match typeCheck ctx v with
@@ -465,14 +465,11 @@ type_inference.typeCheck = cases ctx -> cases
   Operator e1 op e2 -> typeCheckOperator ctx e1 op e2
   ShowConstructor e ->
     et = typeCheck ctx e
-    msg = match et with
-      Left err -> err
-      Right t -> utils.printExpression t
-    Debug.watch msg match (typeCheck ctx e) with
-    Left err -> Left err
-    Right (UnionType _) -> Right (Builtin Text)
-    Right (Application (Builtin Optional) _) -> Right (Builtin Text)
-    _ -> Left "ShowConstructor not applied to Union"
+    match (typeCheck ctx e) with
+      Left err -> Left err
+      Right (UnionType _) -> Right (Builtin Text)
+      Right (Application (Builtin Optional) _) -> Right (Builtin Text)
+      _ -> Left "ShowConstructor not applied to Union"
   _ -> Left "TypeError: unknown"
 
 type_inference.recursivelyMergeRecords : Expression -> Expression -> Either Text Expression
@@ -493,11 +490,10 @@ type_inference.recursivelyMergeRecords ex1 ex2 =
       Right tEx -> Right (RecordType tEx)
     _ -> Left "both operands of a recursive record value merge must be records"
 
-type_inference.withUpdateType : Expression -> Expression -> Nonempty Text -> Either Text Expression
+type_inference.withUpdateType : Expression -> Expression -> Nonempty PathComponent -> Either Text Expression
 type_inference.withUpdateType t vt nel =
-  match t with
-    RecordType tExs ->
-      hd = Nonempty.head nel
+  match (t, Nonempty.head nel) with
+    (RecordType tExs, Label hd) ->
       newType = match List.mayNonempty (Nonempty.tail nel) with
         None -> Right vt
         Optional.Some tl ->
@@ -508,6 +504,14 @@ type_inference.withUpdateType t vt nel =
       match newType with
         Left err -> Left err
         Right nt -> Right (RecordType (List.sortBy Tuple.at1 ((hd, nt) +: (List.deleteFirst (compose ((==) hd) Tuple.at1) tExs ))))
+    (Application (Builtin Optional) optType, DescendOptional) ->
+      newType = match List.mayNonempty (List.Nonempty.tail nel) with
+        None -> Right vt
+        Optional.Some tl ->
+          withUpdateType (Application (Builtin Optional) optType) vt tl
+      match newType with
+        Left err -> Left err
+        Right nt -> if (equivalent nt optType) then Right (Application (Builtin Optional) optType) else Left "<with> cannot change the type of an <Optional> value"
     _ -> Left "Intermediate path in With expression doesn't point to a record"
 
 type_inference.mergeReduceType : Optional Expression -> [(Text, Optional Expression)] -> [(Text, Expression)] -> Either Text Expression

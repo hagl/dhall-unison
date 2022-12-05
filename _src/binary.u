@@ -174,7 +174,11 @@ binary.encode expression =
         z0 -> TList ((TPosInt 25) +: (difference [ encode z0 ]))
       loop id expression
     Annotation t0 T0 -> TList [ TPosInt 26, encode t0, encode T0]
-    With e0 ks v0 -> TList [ TPosInt 29, encode e0, TList (List.map TString (Nonempty.toList ks)), encode v0]
+    With e0 ks v0 ->
+      encodePathComponent = cases
+        PathComponent.Label t -> TString t
+        PathComponent.DescendOptional -> TPosInt 0
+      TList [ TPosInt 29, encode e0, TList (List.map encodePathComponent (Nonempty.toList ks)), encode v0]
     Completion T0 r0 -> TList [TPosInt 3, TPosInt 13, encode T0, encode r0]
     DateLiteral (Date y m d) -> TList [TPosInt 30, TPosInt y, TPosInt m, TPosInt d]
     TimeLiteral (Time h m s p) ->
@@ -421,13 +425,17 @@ binary.decodeFile path =
     _ -> Left "Error decoding file"
   go [] path
 
-binary.decodeTextList : [Term] -> Either Text [Text]
-binary.decodeTextList path =
+binary.decodePathComponents : [Term] -> Either Text (List.Nonempty PathComponent)
+binary.decodePathComponents path =
   go acc = cases
     [] -> Right acc
-    ((TString f) +: rest) -> go (f +: acc) rest
+    ((TString f) +: rest) -> go ((Label f) +: acc) rest
+    ((TPosInt 0) +: rest) -> go (DescendOptional +: acc) rest
     _ -> Left "Error decoding file"
-  go [] path
+  match (go [] path) with
+    Right (h +: t) -> Right (h +| t)
+    Right [] -> Left "empty path components"
+    Left err -> Left err
 
 binary.removeSelfDescribeTags : Term -> Term
 binary.removeSelfDescribeTags t =
@@ -657,12 +665,12 @@ binary.decodeTerm t =
         (Right t1, Right s1) -> Right (Annotation t1 s1)
         (l@(Left _), _) -> l
         (_,l@(Left _)) -> l
-    TList [TPosInt 29, e, TList ((TString s) +: rest), v] ->
-      match (decode e, decode v, decodeTextList rest) with
-        (Right e1, Right v1, Right list) -> Right (With e1 (s +| list) v1)
+    TList [TPosInt 29, e, TList components, v] ->
+      match (decode e, decodePathComponents components, decode v) with
+        (Right e1, Right list, Right v1) -> Right (With e1 list v1)
         (l@(Left _), _, _) -> l
-        (_, l@(Left _), _) -> l
-        (_, _, Left err) -> Left err
+        (_, Left err, _) -> Left err
+        (_, _, l@(Left _)) -> l
     TList [TPosInt 30, TPosInt y, TPosInt m, TPosInt d] -> Right (DateLiteral (Date.Date y m d))
     TList [TPosInt 31, TPosInt h, TPosInt m, TTagged 4 (TList [TPosInt 0, TPosInt s])] -> Right (TimeLiteral (Time h m s 0))
     TList [TPosInt 31, TPosInt h, TPosInt m, TTagged 4 (TList [TNegInt p, TPosInt s])] -> Right (TimeLiteral (Time h m s (p + 1)))

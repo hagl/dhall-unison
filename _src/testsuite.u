@@ -294,8 +294,8 @@ import.dhallMapToUnison = cases
       (h +: _, _) -> Left h
   _ -> Left "Error converting map, not a list"
 
-testsuite.importTest : FilePath -> Text -> Text ->{IO, Exception} Boolean
-testsuite.importTest cacheDir testDir name =
+testsuite.importTest : FilePath -> FilePath -> Text -> Text ->{IO, Exception} Boolean
+testsuite.importTest cacheDir homeDir testDir name =
     use Text
     dirs = List.reverse (utils.splitOn "/" (testDir))
     use type_inference
@@ -314,7 +314,7 @@ testsuite.importTest cacheDir testDir name =
               Left (ResolveError _ msg) -> Debug.watch ("Import error : " ++ msg) Left msg
               Right resolved -> dhallMapToUnison (betaNormalize resolved)
         else
-          Right (Map.singleton "DHALL_TEST_VAR" "6 * 7")
+          Right (Map.fromList [("DHALL_TEST_VAR", "6 * 7"), ("HOME", FilePath.toText homeDir)])
 
     match env with
       Left err -> false
@@ -422,7 +422,7 @@ testsuite.runTests path =
           withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/normalization") "A.dhall" normalizationTest),
           withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/type-inference/success") "A.dhall" typeInferenceTest),
           runTestsRecursive  ("./dhall-lang/tests/type-inference/failure") ".dhall" typeInferenceFailureTest,
-          runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall"))),
+          runTestsRecursive  ("./dhall-lang/tests/import/success") "A.dhall" (importTest (FilePath (path ++ "/tests/import/cache/dhall")) (FilePath (path ++ "/tests/import/home"))),
           runTestsRecursive  ("./dhall-lang/tests/import/failure") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
           runTestsRecursive  ("./dhall-lang/tests/import/failure/unit/cors") ".dhall" (importFailureTest (FilePath (path ++ "/tests/import/cache/dhall"))),
           withDefaultLoader '(runTestsRecursive  ("./dhall-lang/tests/semantic-hash/success") "A.dhall" semanticHashTest),

@@ -41,4 +41,8 @@
 .> load _src/testsuite.u
 .> add
 .> run runTestSuite ./dhall-lang
+.> load _src/dhall_types.u
+.> add
+.> load _src/dhall.u
+.> add
 ```
