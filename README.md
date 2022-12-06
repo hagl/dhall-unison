@@ -15,12 +15,6 @@ To install the latest version in your Unison codebase use the following ucm comm
 pull hagl.public.dhall .lib.dhall
 ```
 
-If you are interested in the sources you will also need `stew.parser` and `stew.http`:
-```
-.> pull git@github.com:stew/codebase:.parser.trunk .external.stew.parser
-.> pull git@github.com:stew/codebase:.http.trunk .external.stew.http
-```
-
 ## Usage
 
 The main interface for this library are the functions
@@ -194,8 +188,8 @@ Copyright 2021-2022 [Harald Gliebe][hagl]
 This project is based on and uses code from the projects
 - [dhall-lang][dhall-lang-project] ([3-Clause BSD License][dhall-lang-license])
 - [dhall-haskell][dhall-haskell] ([3-Clause BSD License][dhall-lang-license])
-- [stew/parser][stew-parser]
-- [stew/http][stew-http]
+- [stew/uniparsec][stew-parser]
+- [stew/httpclient][stew-http]
 
 [license]: https://github.com/hagl/dhall-unison/blob/main/LICENSE
 [unison]: https://www.unisonweb.org/
