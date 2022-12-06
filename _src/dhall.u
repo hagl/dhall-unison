@@ -178,7 +178,7 @@ normalizeExpression input =
   Loading and evaluating the remote expression takes some time. By adding a semantic hash to the import, the function can be cached locally. This will reduce the runtime of the second call below. You can use `dhallHash` to calculate the hash value of an import expression:
 
   ```txt
-  .> run dhallRun https://prelude.dhall-lang.org/List/fold.dhall
+  .> run dhallHash https://prelude.dhall-lang.org/List/fold.dhall
   sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814
 
   .> run dhallRun let sum = \(l: List Natural) -> https://prelude.dhall-lang.org/List/fold.dhall sha256:10bb945c25ab3943bd9df5a32e633cbfae112b7d3af38591784687e436a8d814 Natural l Natural (\(x: Natural) -> \(y: Natural) -> x + y)  0 in sum [1,2,3,4,5]
