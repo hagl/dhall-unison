@@ -12,13 +12,7 @@ A [Unison][unison] implementation of the [Dhall configuration language][dhall-la
 
 To install the latest version in your Unison codebase use the following ucm command:
 ```
-pull https://github.com/hagl/dhall-unison:.dhall.releases._v2 .external.dhall.v2
-```
-
-If you are interested in the sources you will also need `stew.parser` and `stew.http`:
-```
-.> pull git@github.com:stew/codebase:.parser.trunk .external.stew.parser
-.> pull git@github.com:stew/codebase:.http.trunk .external.stew.http
+pull hagl.public.dhall .lib.dhall
 ```
 
 ## Usage
@@ -166,15 +160,14 @@ run .external.dhall.trunk.testsuite.runTestSuite <path to local copy of github.c
 ```
 At the time of this writing this will give the following results
 ```
-1468 total tests ( ✅ 1461 passed, 🚫 7 failed) in directory /Users/harald/projects/dhall-unison/dhall-lang
-Duration: 869.17s
+1495 total tests ( ✅ 1492 passed, 🚫 3 failed) in directory ./dhall-lang
+Duration: 567.007s
 ```
 The remaining failing tests are
 
 * `dhall-lang/tests/type-inference/success/preludeA.dhall` : This test recursively loads all of prelude and shows some performance problems in the current implementation. It would probably succeed, but would take hours/days to do so. See the issues labeled [performance](https://github.com/hagl/dhall-unison/issues?q=is%3Aissue+label%3Aperformance+) for some ideas how to improve the performance.
-* `./dhall-lang/tests/import/success/unit/cors/*` : The test.dhall-lang.org server that is used for CORS tests is currently not sending the correct response headers. See https://github.com/dhall-lang/dhall-lang/pull/1265 for details
-* `./dhall-lang/tests/import/success/unit/headerForwarding` : This test requires https://github.com/dhall-lang/dhall-lang/pull/1263 to be merged.
-
+* `./dhall-lang/tests/parser/failure/spacing/LetNoSpace3`
+* `./dhall-lang/tests/parser/failure/spacing/LetNoSpace4`
 ### Limitations
 
 The following features are not yet supported
@@ -195,8 +188,8 @@ Copyright 2021-2022 [Harald Gliebe][hagl]
 This project is based on and uses code from the projects
 - [dhall-lang][dhall-lang-project] ([3-Clause BSD License][dhall-lang-license])
 - [dhall-haskell][dhall-haskell] ([3-Clause BSD License][dhall-lang-license])
-- [stew/parser][stew-parser]
-- [stew/http][stew-http]
+- [stew/uniparsec][stew-parser]
+- [stew/httpclient][stew-http]
 
 [license]: https://github.com/hagl/dhall-unison/blob/main/LICENSE
 [unison]: https://www.unisonweb.org/
@@ -206,7 +199,7 @@ This project is based on and uses code from the projects
 [dhall-haskell]: https://github.com/dhall-lang/dhall-haskell
 [dhall-haskell-license]: https://github.com/dhall-lang/dhall-haskell/blob/main/LICENSE
 [dhall-tests]: https://github.com/dhall-lang/dhall-lang/tree/master/tests
-[stew-parser]: https://share.unison-lang.org/latest/namespaces/stew/parser
-[stew-http]: https://share.unison-lang.org/latest/namespaces/stew/http
+[stew-parser]: https://share.unison-lang.org/@stew/p/code/latest/namespaces/public/projects/uniparsec/main
+[stew-http]: https://share.unison-lang.org/@stew/p/code/latest/namespaces/public/projects/httpclient/main
 [hagl]: https://twitter.com/hagl
 [unison-share-hagl-dhall]: https://share.unison-lang.org/latest/terms/hagl/dhall/README
