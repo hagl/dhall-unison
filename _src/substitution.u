@@ -22,7 +22,7 @@ substitution.substitute e x' n e0 =
     Merge t0 u0 t -> Merge (subst t0) (subst u0) (Optional.map subst t)
     ToMap t0 t -> ToMap (subst t0)(Optional.map subst t)
     EmptyList T0 -> EmptyList (subst T0)
-    NonEmptyList ts0 -> NonEmptyList (Nonempty.map subst ts0)
+    NonEmptyList ts0 -> NonEmptyList (List.Nonempty.map subst ts0)
     Annotation t0 T0 -> Annotation (subst t0) (subst T0)
     Operator l0 op r0 -> Expression.Operator (subst l0) op (subst r0)
     Application f0 a0 -> Application (subst f0) (subst a0)

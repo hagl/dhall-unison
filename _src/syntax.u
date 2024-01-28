@@ -12,7 +12,7 @@ syntax.addTextToTextLiteral t = cases (Chunks l x) -> Chunks l (x Text.++ t)
 (syntax.TextLiteral.<>) : TextLiteral -> TextLiteral -> TextLiteral
 tl1 syntax.TextLiteral.<> tl2 = match tl1 with
   Chunks xys0 z0 -> match tl2 with
-    Chunks xys1 z1 -> match uncons xys1 with
+    Chunks xys1 z1 -> match List.uncons xys1 with
       None -> Chunks xys0 (z0 Text.++ z1)
       Optional.Some ((x1, y1), t) -> Chunks (xys0 List.++ ((z0 Text.++ x1, y1) List.+: t)) z1
 
@@ -30,13 +30,13 @@ syntax.splitOn needle haystack =
 -- -- | Split `Chunks` by lines
 syntax.linesLiteral : TextLiteral -> Nonempty TextLiteral
 syntax.linesLiteral = cases
-  (Chunks [] suffix) -> Nonempty.map (t -> Chunks [] t) (splitOn ?\n suffix)
+  (Chunks [] suffix) -> List.Nonempty.map (t -> Chunks [] t) (splitOn ?\n suffix)
   (Chunks ((prefix, interpolation) +: pairs0) suffix0) ->
     splitLines = splitOn ?\n prefix
     initLines = Nonempty.init splitLines
     lastLine  = Nonempty.last splitLines
     match linesLiteral (Chunks pairs0 suffix0) with
-      Nonempty (Chunks pairs1 suffix1) chunks ->
+      Nonempty.Nonempty (Chunks pairs1 suffix1) chunks ->
         List.foldRight
             Nonempty.cons
             ((Chunks ((lastLine, interpolation) +: pairs1) suffix1) +| chunks)
@@ -73,7 +73,7 @@ syntax.longestSharedWhitespacePrefix literals =
     -- for the last line
     oldLast = Nonempty.last literals
     oldInit = Nonempty.init literals
-    newInit =  filter (compose not emptyLine) oldInit
+    newInit =  List.filter (compose not emptyLine) oldInit
     filteredLines = newInit :+ oldLast
 
     sharedPrefix : [Char] ->{} [Char] ->{} [Char]
@@ -98,7 +98,7 @@ syntax.toDoubleQuoted literal =
     literals = linesLiteral literal
     longestSharedPrefix = longestSharedWhitespacePrefix literals
     indent = List.size longestSharedPrefix
-    unlinesLiteral (Nonempty.map (dropLiteral indent) literals)
+    unlinesLiteral (List.Nonempty.map (dropLiteral indent) literals)
 
 syntax.reservedKeywords : Set Text
 syntax.reservedKeywords = (Set.fromList

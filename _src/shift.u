@@ -27,7 +27,7 @@ shift.shift d x m =
     Merge t0 u0 t -> Merge (shift' t0) (shift' u0) (Optional.map shift' t)
     ToMap t0 t -> ToMap (shift' t0) (Optional.map shift' t)
     EmptyList T0 -> EmptyList (shift' T0)
-    NonEmptyList ts0 -> NonEmptyList (Nonempty.map shift' ts0)
+    NonEmptyList ts0 -> NonEmptyList (List.Nonempty.map shift' ts0)
     Annotation t0 T0 -> Annotation (shift' t0) (shift' T0)
     Operator l0 op r0 -> Operator (shift' l0) op (shift' r0)
     Application f0 a0 -> Application (shift' f0) (shift' a0)

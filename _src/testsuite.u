@@ -445,7 +445,7 @@ You need to specify the path to a local copy of [https://github.com/dhall-lang/d
 ```
 
 }}
-testsuite.runTestSuite: '()
+testsuite.runTestSuite: '{IO, Exception}()
 testsuite.runTestSuite _ =
   args = !getArgs
   match List.head args with

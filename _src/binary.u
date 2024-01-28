@@ -90,6 +90,8 @@ binary.encodeBuiltin =
     Date -> "Date"
     Time -> "Time"
     TimeZone -> "TimeZone"
+    True -> bug "True is not encode as string"
+    False -> bug "False is not encode as string"
 
 binary.encodeConstant : Constant -> Text
 binary.encodeConstant = cases
@@ -224,8 +226,6 @@ binary.Term.toBytes: Term ->{} Bytes
 binary.Term.toBytes = cases
   TPosInt n -> majorTypeIntArg 0 n
   TNegInt n -> majorTypeIntArg 1 n
---   TPosInteger Natural ->
---   TNegInteger Natural ->
   TBytes bytes -> (majorTypeIntArg 2 (Bytes.size bytes)) Bytes.++ bytes
   TString text ->
     bytes = Text.toUtf8 text
@@ -239,9 +239,14 @@ binary.Term.toBytes = cases
   TNull -> majorTypeIntArg 7 22
   TSimple n | n <= 0xFF -> majorTypeIntArg 7 n
   TFloat bytes -> match Bytes.size bytes with
-    2 ->  Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 25] Bytes.++ bytes
-    4 ->  Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 26] Bytes.++ bytes
-    8 ->  Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 27] Bytes.++ bytes
+    2 -> Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 25] Bytes.++ bytes
+    4 -> Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 26] Bytes.++ bytes
+    8 -> Bytes.fromList.impl [(Nat.shiftLeft 7 5) + 27] Bytes.++ bytes
+    n -> bug ("unexpected size of bytes " Text.++ (Nat.toText n))
+  TPosInteger _ -> bug "Todo"
+  TNegInteger _ -> bug "Todo"
+  TSimple _ -> bug "TODO"
+
 
 use Nat
 binary.Term.internal.majorTypeIntArg : Nat -> Nat ->{} Bytes
@@ -265,6 +270,7 @@ binary.Term.internal.readArgument bytes n =
     25 -> Bytes.decodeNat16be bytes
     26 -> Bytes.decodeNat32be bytes
     27 -> Bytes.decodeNat64be bytes
+    _ -> bug ("unexpected n: " Text.++ (Nat.toText n))
 
 binary.Term.internal.readFloat: Bytes -> Nat -> Either Text (Term, Bytes)
 binary.Term.internal.readFloat bytes n =
@@ -343,6 +349,7 @@ binary.Term.fromBytes bytes =
           26 -> readFloat bs 4
           27 -> readFloat bs 8
           v -> Left ("Unexpected simple value " Text.++ (Nat.toText v))
+      (m, n) -> bug ("unexpected tuple : (" Text.++ (Nat.toText m) Text.++ ", " Text.++ (Nat.toText n) Text.++ ")")          
   match go bytes with
     Left err -> Left err
     Right (t, rest) ->
@@ -469,7 +476,7 @@ binary.decodeTerm t =
     TList ((TPosInt 0) +: (tf +: rest)) ->
       if (List.size rest == 0) then Left "Function application needs at least 1 argument"
         else List.foldLeft (cases
-            l@(Left _) -> 'l
+            l@(Left _) -> _ -> l
             Right g -> t -> match decode t with
               l@(Left _) -> l
               Right a -> Right (Application g a)) (decode tf) rest
@@ -512,6 +519,7 @@ binary.decodeTerm t =
       match (List.lefts decoded, List.rights decoded) with
         ([], h +: t) -> Right (NonEmptyList (h +| t))
         (h +: _, _) -> Left h
+        ([], []) -> Left "Expected non empty list"
     TList [TPosInt 5, TNull, t] ->
       match decode t with
         l@(Left _) -> l
@@ -536,7 +544,7 @@ binary.decodeTerm t =
         (_,l@(Left _)) -> l
     TList [TPosInt n, TMap kvs] | (n == 7) || (n == 8) ->
       match List.foldLeft (cases
-        l@(Left _) -> 'l
+        l@(Left _) -> _ -> l
         Right list -> cases
           (TString k, v) ->
             match (decode v) with
@@ -560,7 +568,7 @@ binary.decodeTerm t =
         l@(Left _) -> l
         Right e ->
           match List.foldLeft (cases
-            l@(Left _) -> 'l
+            l@(Left _) -> _ -> l
             Right list -> cases
               TString s -> Right (list :+ s)
               _ -> Left "labels in projects must be strings") (Right []) rest with
@@ -568,7 +576,7 @@ binary.decodeTerm t =
             Right list -> Right (ProjectByLabels e list)
     TList [TPosInt 11, TMap kvs] ->
       match List.foldLeft (cases
-        l@(Left _) -> 'l
+        l@(Left _) -> _ -> l
         Right list -> cases
           (TString k, TNull) -> Right (list :+ (k, None))
           (TString k, v) ->
@@ -609,6 +617,7 @@ binary.decodeTerm t =
             Left err -> Left err
             Right f -> go (acc :+ (t, f)) rest
           [TString t] -> Right (TextLiteral (Chunks acc t))
+          _ -> Left "Error parsing text literal"
       go [] rest
     TList [TPosInt 19, t] -> Either.mapRight Assert (decode t)
   --[24, null, 0, 0, null, "foo:bar@baz:123", "path1", "path2", null]
@@ -620,35 +629,40 @@ binary.decodeTerm t =
         0 -> Code
         1 -> RawText
         2 -> Location
+        _ -> bug ("unknown mode: " Text.++ (Nat.toText mode))
       digest = match digestOrNull with
         TBytes bytes -> Some (SHA256Digest (Bytes.drop 2 bytes))
         _ -> None
       match importType with
         n | n<2 ->
           scheme = if n == 0 then HTTP else HTTPS
-          match rest with headers +: ((TString authority) +: (filepath :+ query)) ->
-            hs = match headers with
-              TNull -> Right None
-              e -> Either.mapRight Some (decode headers)
-            match (hs, decodeFile filepath, query) with
-              (Right h, Right f, TString q) -> Right (Import (Remote (URL scheme authority f (Some q)) h) importMode digest)
-              (Right h, Right f, _) -> Right (Import (Remote (URL scheme authority f None) h) importMode digest)
-              (Left err, _, _) -> Left err
-              (_, Left err, _) -> Left err
+          match rest with 
+            headers +: ((TString authority) +: (filepath :+ query)) ->
+              hs = match headers with
+                TNull -> Right None
+                e -> Either.mapRight Some (decode headers)
+              match (hs, decodeFile filepath, query) with
+                (Right h, Right f, TString q) -> Right (Import (Remote (URL scheme authority f (Some q)) h) importMode digest)
+                (Right h, Right f, _) -> Right (Import (Remote (URL scheme authority f None) h) importMode digest)
+                (Left err, _, _) -> Left err
+                (_, Left err, _) -> Left err
+            _ -> bug "Unexpected import"
         n | n < 6 ->
           prefix = match n with
             2 -> Absolute
             3 -> Here
             4 -> Parent
             5 -> Home
+            _ -> bug "Unexpected prefix"
           Either.mapRight (f -> Import (Path prefix f) importMode digest) (decodeFile rest)
         6 -> match rest with
           [TString v] -> Right (Import (Env v) importMode digest)
           _ -> Left "Error decoding env variable"
         7 -> Right (Import Missing Code None)
+        _ -> Left ("Unexepected importType: " Text.++ (Nat.toText importType))
     TList ((TPosInt 25) +: (rest :+ z)) ->
       go = cases
-        l@(Left _) -> 'l
+        l@(Left _) -> _ -> l
         Right acc -> cases
           [] -> (Right acc)
           (((start :+ TString x) :+ TNull) :+ a) -> match decode a with

@@ -176,7 +176,7 @@ import.nestedReadWriteCache p f =
       if (Cache.impl.store p expression) then
         handle resume () with handler warned
       else
-        catch '(if not warned then printLine ("Unable to write to cache " ++ (FilePath.toText p)) else ())
+        _ = catch '(if not warned then printLine ("Unable to write to cache " ++ (FilePath.toText p)) else ())
         cacheStore expression
         handle resume () with handler true
     {res} -> res
@@ -309,16 +309,21 @@ import.setupRemoteLoader base =
         Right path -> match parseText parser.local (path ++ "/dhall/headers.dhall") with
           Right confPath@(syntax.ImportType.Path _ _) ->
             importPath = chainImport base confPath
-            match importPath with Path prefix file ->
-              match loadLocal prefix file with
-                Right t -> Right (Optional.Some (t, importPath))
-                Left (ResolveError _ err) -> Right None
+            match importPath with 
+              Path prefix file ->
+                match loadLocal prefix file with
+                  Right t -> Right (Optional.Some (t, importPath))
+                  Left (ResolveError _ err) -> Right None
+              _ -> Left "Expected Path"
           _ -> Left ("XDG_CONFIG_VALUE " ++ path Text.++ " is not a valid path")
-        Left _ ->
+        Left _ -> let
           importPath = chainImport base (Path Home (syntax.File.File ["dhall", ".config"] "headers.dhall" ))
-          match (match importPath with Path prefix file -> loadLocal prefix file) with
-          Right text -> Right (Optional.Some (text, importPath))
-          Left _ -> Right None
+          (prefix, file) = match importPath with 
+            Path prefix file -> (prefix, file)
+            _ -> bug "Expected Path"
+          match loadLocal prefix file with
+            Right text -> Right (Optional.Some (text, importPath))
+            Left _ -> Right None
 
   headerMap = match oHeaderExp with
     -- Left (ResolveError _ err) -> Left err
@@ -341,6 +346,7 @@ import.setupRemoteLoader base =
                       _ -> Left "Error evaluating default headers") (Nonempty.toList list)) with
                   ([], rights) -> Right (Map.fromList rights)
                   (h +: _, _) -> Left h
+              _ -> bug "type checked earlier"
   match headerMap with
     Left err -> Left err
     Right map -> Right (defaultHeaderRemoteLoader map)
@@ -354,6 +360,7 @@ import.queryParser.pctEncoded = (char ?%) *> parser.tokens.hexChar ^ parser.toke
   (c1, c2) ->
     match Optional.flatMap Natural.toMaybeNat (Natural.parse 16 (Text.fromCharList [c1, c2])) with
       Optional.Some n -> n
+      None -> bug "can't happen"
 
 import.queryParser.pctEncodedChars : Parser e Char Text
 import.queryParser.pctEncodedChars = many1 import.queryParser.pctEncoded >>= cases
@@ -399,15 +406,15 @@ import.defaultHeaderRemoteLoader defaults =
         Left err -> Left err
         Right headers ->
           s = match scheme with
-            HTTPS -> Some (lib.http.Uri.Scheme.Scheme "https")
-            HTTP -> Some (lib.http.Uri.Scheme.Scheme "http")
-          p = match file with File dirs f -> lib.http.Uri.Path.Path (List.reverse (f +: dirs))
-          q = http.Uri.Query.Params (Optional.getOrElse Map.empty (Optional.map parseQuery oQuery))
-          uri = http.Uri.Uri s (Some (Authority None (HostName authority) None)) p (Some q) None
+            HTTPS -> Scheme.https
+            HTTP -> Scheme.http
+          p = match file with File dirs f -> Path.Path (List.reverse (f +: dirs))
+          q = URI.Query.Query (Optional.getOrElse Map.empty (Optional.map parseQuery oQuery))
+          uri = URI.URI s (Some (Authority None (HostName authority) None)) p (toRawQuery q) (Fragment "")
           -- message = http.Message.Message http.Version.http11 headers http.Body.empty http.Attributes.empty
           -- req _ = Debug.watch "pre req" (request (Debug.watch "p1 req" (Request message GET uri)))
           -- req _ = Debug.watch "pre req" (request (Debug.watch "p1 req" (HttpRequest GET http.Version.http11 uri headers http.Body.empty)))
-          req _ = request (HttpRequest GET http.Version.http11 uri headers http.Body.empty)
+          req _ = request (HttpRequest GET Version.http11 uri headers Body.empty)
           response = catch '(handle !req with Http.handler)
           match response with
             Right resp@(HttpResponse (Status s st) _ (Headers headers) (Body bytes)) | HttpResponse.isSuccess resp ->
@@ -541,7 +548,7 @@ import.resolveExpression = cases
   Merge t0 u0 t -> Merge (resolveExpression t0) (resolveExpression u0) (Optional.map resolveExpression t)
   ToMap t0 t -> ToMap (resolveExpression t0)(Optional.map resolveExpression t)
   EmptyList T0 -> EmptyList (resolveExpression T0)
-  NonEmptyList ts0 -> NonEmptyList (Nonempty.map resolveExpression ts0)
+  NonEmptyList ts0 -> NonEmptyList (List.Nonempty.map resolveExpression ts0)
   Annotation t0 T0 -> Annotation (resolveExpression t0) (resolveExpression T0)
   Operator l0 op r0 | op === Operator.Alternative ->
       match tryResolve l0 with
@@ -586,8 +593,7 @@ import.verifyAndResolve loaded importType oDigest cache previous =
               match type_inference.typeCheck Context.empty resolved with
                 Left error -> Left (ResolveError TypeError ("Type error in " ++ (utils.printImportType importType) ++" : " ++ error))
                 Right typedExpression -> Right (betaNormalize resolved, newCache)
--- TODO
-            Right (resolved, newCache) -> Right (resolved, newCache)
+-- TODO            Right (resolved, newCache) -> Right (resolved, newCache)
 
 
 import.resolve : ImportType -> Expression -> Either ResolveError Expression
@@ -635,8 +641,8 @@ import.resolveImports base previous cache expression =
                     Right (expression, newCache) ->
                       if Optional.map (cases SHA256Digest digest -> digest === (hashExpression expression)) oDigest === Some false
                         then Left (ResolveError UnrecoverableImportError "digest doesn't match")
-                        else
-                          Optional.map (_ -> cacheStore expression) oDigest
+                        else let
+                          _ = Optional.map (_ -> cacheStore expression) oDigest
                           handle resume expression with handler (Map.insert (chained, importMode) expression newCache)
                     Left err -> Left err
     {Import.tryResolve exp -> resume} ->

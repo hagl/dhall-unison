@@ -101,7 +101,7 @@ type_inference.typeCheck = cases ctx -> cases
   TextLiteral (Chunks texs _) ->
     match List.foldLeft (
       cases
-        Left err -> '(Left err)
+        Left err -> _ -> (Left err)
         Right _ -> cases (_, e) -> match typeCheck ctx e with
           Left err -> Left err
           Right (Builtin Text) -> Right (Builtin Text)
@@ -109,6 +109,7 @@ type_inference.typeCheck = cases ctx -> cases
       (Right (Builtin Text)) texs with
         Left err -> Left err
         Right (Builtin Text) -> Right (Builtin Text)
+        Right _ -> Left "Bug: Didn't get a text literal"
   Builtin TextShow -> Right (Forall "_" (Builtin Text) (Builtin Text))
   Builtin TextReplace -> Right (
     Forall "needle" (Builtin Text)
@@ -132,7 +133,7 @@ type_inference.typeCheck = cases ctx -> cases
         t@(Application (Builtin List) T) -> Right t
         t -> Left ("Expected type annotation on empty list to by a List type, but got " ++ (printExpression t))
     _ -> Left "Element type of empty list must be a type"
-  NonEmptyList (Nonempty x rest) ->
+  NonEmptyList (Nonempty.Nonempty x rest) ->
     match  typeCheck ctx x with
       Left e -> Left e
       Right t ->
@@ -224,7 +225,10 @@ type_inference.typeCheck = cases ctx -> cases
           then
             Left "Not all types in the union are types"
           else match List.find (cases (c, nel) -> List.Nonempty.size nel > 1) (Map.toList (List.groupBy Tuple.at1 tts)) with
-            None -> Right (Constant (List.foldLeft (acc -> cases (_, Constant c) -> upperBound acc c) Type tts))
+            None -> Right (Constant (List.foldLeft (acc -> cases 
+              (_, Constant c) -> upperBound acc c
+              _ -> acc -- can't happen, checked above
+              ) Type tts))
             Optional.Some (k, _) -> Left ("Duplicate key '" ++ k ++ "' in record type" )
       (h +: _) -> Left h
 
@@ -276,6 +280,7 @@ type_inference.typeCheck = cases ctx -> cases
               match List.find (cases (x, t) -> not (checkCommonType x t)) sTs with
                 None -> Right  tt
                 Optional.Some (x, t) -> Left ("Attribute '" ++ x ++ "' is missing in source expression or has different type than in projected type")
+            _ -> Left ("TODO check")                
         Right t -> Left ("Trying to project by type to something that is not a type but " ++ (printExpression t))
     Right tp -> Left ("The projection by type is attempted on something that is not a record but of type " ++ (printExpression tp))
 
@@ -340,7 +345,10 @@ type_inference.typeCheck = cases ctx -> cases
               then
                 Left "Not all types in the union are types"
               else
-                Right (Constant (List.foldLeft (acc -> cases (Constant c) -> upperBound acc c) Type (List.rights typed)))
+                Right (Constant (List.foldLeft (acc -> cases 
+                  (Constant c) -> upperBound acc c
+                  _ -> acc -- can't happen, checked above
+                  ) Type (List.rights typed)))
           (h +: _) -> Left h
 
   -- Merge syntax.Expression syntax.Expression (Optional syntax.Expression)
@@ -481,6 +489,7 @@ type_inference.recursivelyMergeRecords ex1 ex2 =
       Right mt -> Either.mapRight ((+:) (a, mt)) (go (as, bs))
     ((a,ta) +: as, bl@((b, _) +: _)) | Text.lt a b -> Either.mapRight ((+:) (a, ta)) (go (as, bl))
     (al@((a,_) +: _), (b, tb) +: bs) | Text.gt a b -> Either.mapRight ((+:) (b, tb)) (go (al, bs))
+    ((al +: _), (bl +: _)) -> Left "TODO check: rewrite expression above ??"
     (as, []) -> Right as
     ([], bs) -> Right bs
 

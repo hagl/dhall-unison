@@ -101,6 +101,7 @@ utils.printExpression = cases
       absMin = if positive then Int.truncate0 minutes else Int.truncate0 (Int.negate minutes)
       (if positive then "+" else "-") ++ (Nat.toText (absMin / 60)) ++ ":" ++ (Nat.toText (Nat.mod absMin 60))
   Import importType importMode optDigest -> (printImportType importType) ++ (printImportMode importMode) ++ (Optional.fold '("") (d -> " " ++ printDigest d) optDigest)
+  ShowConstructor e -> "showConstructor" ++ (printExpression e)
 
 utils.printPathComponent : PathComponent -> Text
 utils.printPathComponent = cases

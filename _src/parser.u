@@ -51,6 +51,7 @@ parser.combinators.peek =
   parse input = handle !input with cases
     {Tokens.emit loc tok -> rest} -> (Optional.Some tok, input)
     { _ } -> (None, input)
+    {Tokens.fail _ -> _} -> (None, input)
   Parser.Parser parse
 
 parser.getLocation : Parser e t Location
@@ -61,7 +62,8 @@ parser.getLocation =
     with
       cases
         {Tokens.emit loc tok -> _} -> (loc, input)
-        { _ }                         -> (unknown, input)
+        {Tokens.fail _ -> _} -> (unknown, input)
+        { _ } -> (unknown, input)
   Parser.Parser parse
 
 
@@ -973,6 +975,7 @@ parser.alternative5 dExpression =
     ((importType, hash), None) -> Import importType Code hash
     ((importType, hash), Some "Text") -> Import importType RawText hash
     ((importType, hash), Some "Location") -> Import importType Location hash
+    ((_, _), Some s) -> bug "can't happen"
 
   -- importExpression = or import completionExpression
 
@@ -996,7 +999,7 @@ parser.alternative5 dExpression =
       (f, maybeMessage) ->
           importExpression ^ (many0 (nonemptyWhitespace *> importExpression)) $> cases
         (a, bs) ->
-          c = foldLeft Application (f a) bs
+          c = List.foldLeft Application (f a) bs
           info = match (maybeMessage, bs) with
             (Optional.Some _, []) -> NakedMergeOrSomeOrToMap
             (None, []) -> ImportExpr
@@ -1138,7 +1141,7 @@ parser.checkDate y m d = match m with
   10 -> d <= 31
   11 -> d <= 30
   12 -> d <= 31
-
+  _ -> false
 
 parser.fullDate : Parser e Char Date
 parser.fullDate =
@@ -1162,7 +1165,7 @@ parser.timeNumoffset =
   (or plus minus) ^ timeHour ^ (colon *> timeMinutes) $> cases
     ((?+,  h), m) -> TimeZone (Nat.toInt (h * 60 + m))
     ((?-,  h), m) -> TimeZone (-1 * (Nat.toInt (h * 60 + m)))
-
+    _ -> bug "can't happen"
 
 parser.timeOffset : Parser e Char TimeZone
 parser.timeOffset =

@@ -190,13 +190,13 @@ support.naturalToFloat = cases
           Some b -> Nonempty.cons b lne
         f = match naturalToNat (internal.Natural last2) with
           Some x -> Nat.toFloat x
-        -- f
+          _ -> bug "TODO"
         f * Float.pow 2.0 (Nat.toFloat (32 * (nz - 2)))
 
 support.naturalToNat : Natural -> Optional Nat
 support.naturalToNat n = match digits n with
-    Nonempty a []  -> Some a
-    Nonempty a [b] ->
+    Nonempty.Nonempty a []  -> Some a
+    Nonempty.Nonempty a [b] ->
       use Nat +
       Some (a + Nat.shiftLeft b 32)
     _              -> None

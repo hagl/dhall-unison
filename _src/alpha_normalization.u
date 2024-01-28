@@ -28,7 +28,7 @@ alpha_normalization.alphaNormalize = cases
   Merge t0 u0 t -> Merge (alphaNormalize t0) (alphaNormalize u0) (Optional.map alphaNormalize t)
   ToMap t0 t -> ToMap (alphaNormalize t0)(Optional.map alphaNormalize t)
   EmptyList T0 -> EmptyList (alphaNormalize T0)
-  NonEmptyList ts0 -> NonEmptyList (Nonempty.map alphaNormalize ts0)
+  NonEmptyList ts0 -> NonEmptyList (List.Nonempty.map alphaNormalize ts0)
   Annotation t0 T0 -> Annotation (alphaNormalize t0) (alphaNormalize T0)
   Operator l0 op r0 -> Operator (alphaNormalize l0) op (alphaNormalize r0)
   Application f0 a0 -> Application (alphaNormalize f0) (alphaNormalize a0)
@@ -52,6 +52,8 @@ alpha_normalization.alphaNormalize = cases
   TimeLiteral t -> TimeLiteral t
   TimeZoneLiteral tz -> TimeZoneLiteral tz
   ShowConstructor a0 -> ShowConstructor (alphaNormalize a0)
+  Import _ _ _ -> bug "Cannot alpha normalize unresolved imports"
+
 use test
 
 test> alpha_normalization.alphaNormalize.tests.ex1 = check(alphaNormalize(
